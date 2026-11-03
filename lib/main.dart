@@ -6,6 +6,8 @@ import "app.dart";
 import "i18n/i18n.dart";
 import "pdf/pdf_ports.dart";
 import "pdf/pdfrx_impl.dart";
+import "platform/image_picker_impl.dart";
+import "platform/photo_picker.dart";
 import "state/providers.dart";
 
 Future<void> main() async {
@@ -35,6 +37,7 @@ Future<void> main() async {
       pdfTextExtractorProvider.overrideWithValue(const PdfrxTextExtractor()),
       ticketPdfBuilderProvider.overrideWithValue(pdfrxTicketBuilder),
       ticketFileActionsProvider.overrideWithValue(const PrintingFileActions()),
+      photoPickerProvider.overrideWithValue(ImagePickerPhotoPicker()),
     ],
     child: const QuaiApp(),
   ));

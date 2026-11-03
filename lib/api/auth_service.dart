@@ -1,4 +1,5 @@
 import "../models/carrier.dart";
+import "session.dart";
 
 /// Result of a sign-in: one access token per truck the login covers.
 class AuthResult {
@@ -23,15 +24,49 @@ class AuthFailure implements Exception {
 /// POST /api/auth/mvp-login itself, and returns only the resulting tokens.
 abstract class AuthService {
   Future<AuthResult> signIn({required Carrier carrier, required String code});
+
+  /// SuperUser (/admin) sign-in. The reference app compared a hardcoded
+  /// username/password IN THE BROWSER and then logged in as every carrier with
+  /// the passwords it also shipped. Here the SERVER checks the credentials and,
+  /// on success, returns one access token per backend account in
+  /// [AuthResult.linkedTokens] (keyed by backend username). Nothing is checked
+  /// or stored client-side.
+  Future<AuthResult> signInSuperUser({required String username, required String password});
 }
 
 /// Calls the server-side token exchange. Endpoint is injected, never a secret.
 class TokenExchangeAuthService implements AuthService {
+  // PROPOSED CONTRACT for the SuperUser exchange (same endpoint):
+  //   POST <exchangeUrl> {"carrier": "SuperUser", "username": ..., "code": <password>}
+  //   -> {"accessToken": "...", "linkedTokens": {"<backend username>": "<token>", ...}}
+  // linkedTokens must hold a token for EVERY backend account; 401/403 on a bad login.
   TokenExchangeAuthService({required this.exchangeUrl, required this.post});
 
   final String exchangeUrl;
   /// Injected transport so this stays unit-testable: body -> decoded JSON.
   final Future<Map<String, dynamic>> Function(String url, Map<String, dynamic> body) post;
+
+  @override
+  Future<AuthResult> signInSuperUser({required String username, required String password}) async {
+    if (exchangeUrl.isEmpty) {
+      throw AuthFailure("NOT_CONFIGURED: server-side token exchange endpoint is not set.");
+    }
+    final json = await post(exchangeUrl, <String, dynamic>{
+      "carrier": kSuperUserName,
+      "username": username,
+      "code": password,
+    });
+    final linked = <String, String>{};
+    final rawLinked = json["linkedTokens"];
+    if (rawLinked is Map) {
+      rawLinked.forEach((k, v) {
+        if (v is String && v.isNotEmpty) linked[k.toString()] = v;
+      });
+    }
+    if (linked.isEmpty) throw AuthFailure("Invalid response from token exchange.");
+    final primary = json["accessToken"];
+    return AuthResult(primaryToken: primary is String ? primary : "", linkedTokens: linked);
+  }
 
   @override
   Future<AuthResult> signIn({required Carrier carrier, required String code}) async {
@@ -60,6 +95,14 @@ class TokenExchangeAuthService implements AuthService {
 /// It deliberately FAILS LOUDLY instead of faking a signed-in session, so a
 /// missing backend can never be mistaken for a working login.
 class UnimplementedAuthService implements AuthService {
+  @override
+  Future<AuthResult> signInSuperUser({required String username, required String password}) async {
+    throw AuthFailure(
+      "PENDING_BACKEND: the server-side token exchange is not deployed yet. "
+      "The SuperUser login cannot work until it exists.",
+    );
+  }
+
   @override
   Future<AuthResult> signIn({required Carrier carrier, required String code}) async {
     throw AuthFailure(

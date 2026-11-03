@@ -1,9 +1,21 @@
+import "dart:async";
+
+import "package:dio/dio.dart";
 import "package:flutter/material.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
 import "package:url_launcher/url_launcher.dart";
 
 import "../api/api_client.dart";
+import "../api/adjustment_service.dart";
+import "../api/announcements_service.dart";
 import "../api/auth_service.dart";
+import "../api/backend_gateway.dart";
+import "../api/history_service.dart";
+import "../api/receipts_service.dart";
+import "../api/supabase_rest_gateway.dart";
+import "../api/unsubscribe_service.dart";
+import "../logic/announcements.dart";
+import "../logic/delivery_history.dart";
 import "../api/contact_service.dart";
 import "../api/middleware_source.dart";
 import "../api/orders_repository.dart";
@@ -42,9 +54,22 @@ final exchangeUrlProvider = Provider<String>((ref) => const String.fromEnvironme
 final authServiceProvider = Provider<AuthService>((ref) {
   final url = ref.watch(exchangeUrlProvider);
   if (url.isEmpty) return UnimplementedAuthService();
+  final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 20), receiveTimeout: const Duration(seconds: 30)));
   return TokenExchangeAuthService(
     exchangeUrl: url,
-    post: (u, body) async => throw AuthFailure("Transport not wired yet"),
+    post: (u, body) async {
+      final Response<dynamic> res;
+      try {
+        res = await dio.post<dynamic>(u, data: body, options: Options(validateStatus: (_) => true));
+      } on DioException {
+        throw AuthFailure("Connexion impossible. / Cannot connect.");
+      }
+      final status = res.statusCode ?? 0;
+      if (status == 401 || status == 403) throw AuthFailure("Identifiants incorrects. / Incorrect credentials.");
+      final data = res.data;
+      if (status >= 400 || data is! Map) throw AuthFailure("Connexion impossible. / Cannot connect.");
+      return data.cast<String, dynamic>();
+    },
   );
 });
 
@@ -83,6 +108,8 @@ final ordersLoadProvider = FutureProvider<OrdersLoad>((ref) async {
         linkedTokens: session.linkedTokens(),
       );
   session.rememberToTokens(load.toTokens);
+  // Mirror what we just loaded into delivery_history (best effort, never blocks).
+  unawaited(ref.read(historyServiceProvider).snapshot(load.orders));
   return load;
 });
 
@@ -154,3 +181,67 @@ final urlLauncherProvider = Provider<Future<void> Function(Uri uri)>(
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   },
 );
+
+// --- Backend (announcements, receipts, change reports, history, unsubscribe) -------------
+
+/// Supabase URL and PUBLISHABLE key, supplied at build time with --dart-define.
+/// Empty = backend features report "not configured" instead of faking success.
+final backendUrlProvider = Provider<String>((ref) => const String.fromEnvironment("QUAI_BACKEND_URL"));
+final backendKeyProvider = Provider<String>((ref) => const String.fromEnvironment("QUAI_BACKEND_KEY"));
+
+final backendProvider = Provider<BackendGateway>((ref) {
+  final url = ref.watch(backendUrlProvider);
+  final key = ref.watch(backendKeyProvider);
+  if (url.isEmpty || key.isEmpty) return const UnconfiguredBackend();
+  return SupabaseRestGateway(baseUrl: url, anonKey: key);
+});
+
+final receiptsServiceProvider = Provider<ReceiptsService>((ref) => ReceiptsService(gateway: ref.watch(backendProvider)));
+final adjustmentServiceProvider = Provider<AdjustmentService>((ref) => AdjustmentService(gateway: ref.watch(backendProvider)));
+final announcementsServiceProvider =
+    Provider<AnnouncementsService>((ref) => AnnouncementsService(gateway: ref.watch(backendProvider)));
+final historyServiceProvider = Provider<HistoryService>((ref) => HistoryService(gateway: ref.watch(backendProvider)));
+final unsubscribeServiceProvider = Provider<UnsubscribeService>((ref) => UnsubscribeService(gateway: ref.watch(backendProvider)));
+
+/// Bumped after the SuperUser edits announcements so the banner reloads.
+final announcementsRevisionProvider = StateProvider<int>((ref) => 0);
+
+final announcementsProvider = FutureProvider<List<Announcement>>((ref) async {
+  ref.watch(announcementsRevisionProvider);
+  return ref.watch(announcementsServiceProvider).list();
+});
+
+/// History range in days (0 = live only). Valid values: kHistoryRanges.
+final historyDaysProvider = StateProvider<int>((ref) => 0);
+
+/// Past deliveries for the signed-in carrier, newest first. Today is excluded.
+final pastOrdersProvider = FutureProvider<List<Order>>((ref) async {
+  final days = ref.watch(historyDaysProvider);
+  if (days <= 0) return <Order>[];
+  final session = ref.watch(sessionProvider);
+  if (session.token() == null) return <Order>[];
+  final name = ref.watch(currentCarrierProvider) ?? session.name() ?? "";
+  final names = session.isSuperUser ? null : historyCarrierNames(carrierByDisplayName(name), name);
+  return ref.watch(historyServiceProvider).past(days: days, carrierNames: names);
+});
+
+/// SuperUser aggregate of every account. Empty unless the session is the SuperUser's.
+final adminLoadProvider = FutureProvider<OrdersLoad>((ref) async {
+  final session = ref.watch(sessionProvider);
+  if (!session.isSuperUser) return const OrdersLoad();
+  return ref.watch(ordersRepositoryProvider).loadAggregate(
+        accounts: carrierAccounts(kCarriers),
+        tokensByUsername: session.linkedTokens(),
+      );
+});
+
+/// Group / location filters on /admin.
+final adminGroupProvider = StateProvider<String?>((ref) => null);
+final adminLocationProvider = StateProvider<int?>((ref) => null);
+
+/// Sign out: clear the stored session and the in-memory carrier.
+void signOutNow(WidgetRef ref) {
+  ref.read(sessionProvider).signOut();
+  ref.read(currentCarrierProvider.notifier).state = null;
+  ref.read(historyDaysProvider.notifier).state = 0;
+}

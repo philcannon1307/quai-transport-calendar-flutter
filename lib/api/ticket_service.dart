@@ -1,6 +1,7 @@
 import "dart:async";
 
 import "../data/carriers.dart";
+import "session.dart" show kSuperUserName;
 import "../logic/ticket_cache.dart";
 import "../logic/ticket_progress.dart";
 import "../models/order.dart";
@@ -85,7 +86,7 @@ class TicketService {
 
     var res = await fetch(token, orderNum, onDownload: onDownload);
 
-    if (res.status == 404 && !isTransfer && tokens.carrierName() == kLogistique) {
+    if (res.status == 404 && !isTransfer && (tokens.carrierName() == kLogistique || tokens.carrierName() == kSuperUserName)) {
       final alt = await _fromSadmTrucks(orderNum);
       if (alt != null) res = alt;
     }

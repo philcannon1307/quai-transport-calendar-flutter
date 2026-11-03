@@ -11,6 +11,12 @@ import "../theme.dart";
 import "../data/carriers.dart";
 import "../widgets/contact_links.dart";
 import "../widgets/logistique_tabs.dart";
+import "../logic/delivery_history.dart";
+import "../widgets/adjustment_sheet.dart";
+import "../widgets/announcement_banner.dart";
+import "../widgets/bilingual.dart";
+import "../widgets/receipt_sheet.dart";
+import "../api/session.dart";
 import "ticket_sheet.dart";
 
 class CalendarScreen extends ConsumerWidget {
@@ -25,20 +31,42 @@ class CalendarScreen extends ConsumerWidget {
     final isLogistique = ref.watch(currentCarrierProvider) == kLogistique;
     final view = ref.watch(logistiqueViewProvider);
     final load = ref.watch(ordersLoadProvider).valueOrNull;
+    final carrierName = ref.watch(currentCarrierProvider);
+    final receipt = receiptButtonFor(carrierName, isSuperUser: ref.watch(sessionProvider).isSuperUser);
+    final historyDays = ref.watch(historyDaysProvider);
+    final past = ref.watch(pastOrdersProvider).valueOrNull ?? const <Order>[];
 
     return Scaffold(
       appBar: AppBar(
         title: Text(s.t("brand.name")),
         actions: <Widget>[
+          if (receipt.show)
+            IconButton(
+              key: const Key("receipt-button"),
+              tooltip: s.t(receipt.bol ? "bol.button" : "receipts.button"),
+              icon: Icon(receipt.bol ? Icons.local_shipping_outlined : Icons.receipt_long_outlined),
+              onPressed: () => showReceiptSheet(context, bol: receipt.bol),
+            ),
           IconButton(
             tooltip: s.t("dash.myOrders"),
             icon: const Icon(Icons.assignment_outlined),
             onPressed: () => Navigator.of(context).pushNamed("/my-orders"),
           ),
+          IconButton(
+            key: const Key("logout-button"),
+            tooltip: s.t("common.logout"),
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              signOutNow(ref);
+              await ref.read(urlLauncherProvider)(Uri.parse(kLogoutUrl));
+              if (context.mounted) Navigator.of(context).pushNamedAndRemoveUntil("/", (_) => false);
+            },
+          ),
         ],
       ),
       body: Column(
         children: <Widget>[
+          const AnnouncementBanner(),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -50,6 +78,20 @@ class CalendarScreen extends ConsumerWidget {
                   ],
                   selected: <int>{span},
                   onSelectionChanged: (v) => ref.read(spanDaysProvider.notifier).state = v.first,
+                ),
+                const SizedBox(width: 10),
+                DropdownButton<int>(
+                  key: const Key("history-range"),
+                  value: historyDays,
+                  underline: const SizedBox.shrink(),
+                  items: <DropdownMenuItem<int>>[
+                    for (final d in kHistoryRanges)
+                      DropdownMenuItem<int>(
+                        value: d,
+                        child: Text(d == 0 ? bi(s, "Historique", "History") : "${bi(s, "Passé", "Past")} $d ${bi(s, "j", "d")}"),
+                      ),
+                  ],
+                  onChanged: (v) => ref.read(historyDaysProvider.notifier).state = v ?? 0,
                 ),
               ],
             ),
@@ -81,7 +123,14 @@ class CalendarScreen extends ConsumerWidget {
                         text: "Certains camions n'ont pas pu être chargés : ${failed.join(", ")} / "
                             "Some trucks could not be loaded: ${failed.join(", ")}",
                       ),
-                    Expanded(child: _DayStack(days: OrderWindows.days(now, span), orders: shown, now: now, strings: s)),
+                    Expanded(
+                      child: _DayStack(
+                        days: <DateTime>[..._pastDays(past, now), ...OrderWindows.days(now, span)],
+                        orders: mergeLiveAndPast(shown, isLogistique ? past.where((o) => calendarView(o) == view).toList() : past),
+                        now: now,
+                        strings: s,
+                      ),
+                    ),
                   ],
                 );
               },
@@ -184,6 +233,18 @@ class _OrderCard extends StatelessWidget {
                   Row(
                     children: <Widget>[
                       Expanded(child: Text(order.soNum, style: const TextStyle(fontWeight: FontWeight.w700))),
+                      InkWell(
+                        key: Key("report-${order.soNum}"),
+                        onTap: () => showAdjustmentSheet(context, order),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          child: Row(children: <Widget>[
+                            const Icon(Icons.flag_outlined, size: 14, color: Colors.black54),
+                            const SizedBox(width: 3),
+                            Text(bi(strings, "Signaler", "Report"), style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                          ]),
+                        ),
+                      ),
                       if (order.isTransfer)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -235,4 +296,17 @@ class _Message extends StatelessWidget {
   Widget build(BuildContext context) => Center(
         child: Padding(padding: const EdgeInsets.all(24), child: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black54))),
       );
+}
+
+/// Days (oldest first) that have at least one past delivery, strictly before today.
+List<DateTime> _pastDays(List<Order> past, DateTime now) {
+  final today = DateTime(now.year, now.month, now.day);
+  final seen = <DateTime>{};
+  for (final o in past) {
+    final d = OrderWindows.parseDate(o.date);
+    if (d == null) continue;
+    final day = DateTime(d.year, d.month, d.day);
+    if (day.isBefore(today)) seen.add(day);
+  }
+  return seen.toList()..sort();
 }

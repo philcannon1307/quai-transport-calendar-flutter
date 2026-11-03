@@ -37,6 +37,10 @@ const String kToTokensKey = "quai_to_tokens";
 const String kLinkedTokensKey = "quai_linked_tokens";
 const String kTransferLocationsKey = "transfer_locations";
 const String kSuperToken = "__SUPERUSER__";
+/// Calendar name shown for the SuperUser session.
+const String kSuperUserName = "SuperUser";
+/// Where logging out sends the user (reference rule).
+const String kLogoutUrl = "https://lafantaisie-connect.lovable.app";
 const String kLangKey = "quai:lang";
 
 /// Retired Gatineau accounts: any saved session must be dropped.

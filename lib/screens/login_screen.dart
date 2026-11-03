@@ -151,6 +151,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    key: const Key("login-admin-link"),
+                    onPressed: () => Navigator.of(context).pushNamed("/admin"),
+                    child: Text(s.t("login.admin"), style: const TextStyle(color: Colors.white70)),
+                  ),
                 ],
               ),
             ),

@@ -24,6 +24,9 @@ dependencies:
   pdfrx: ^1.3.5
   printing: any
   url_launcher: any
+  # Receipt/BOL/announcement photos: pure-Dart resize+JPEG re-encode, and camera/gallery.
+  image: ^4.2.0
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

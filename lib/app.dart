@@ -8,6 +8,9 @@ import "screens/login_screen.dart";
 import "screens/my_orders_screen.dart";
 import "state/providers.dart";
 import "theme.dart";
+import "api/unsubscribe_service.dart";
+import "screens/admin_screen.dart";
+import "screens/unsubscribe_screen.dart";
 
 class QuaiApp extends ConsumerWidget {
   const QuaiApp({super.key});
@@ -40,6 +43,18 @@ class QuaiApp extends ConsumerWidget {
           "/": (_) => const LoginScreen(),
           "/calendar": (_) => const CalendarScreen(),
           "/my-orders": (_) => const MyOrdersScreen(),
+          "/admin": (_) => const AdminScreen(),
+        },
+        // Routes with a query string (/unsubscribe?token=...) never match the
+        // exact-name table above, so they are resolved here.
+        onGenerateRoute: (settings) {
+          final name = settings.name ?? "";
+          final path = Uri.tryParse(name)?.path ?? name;
+          if (path == "/unsubscribe") {
+            final token = unsubscribeToken(routeName: name, pageUri: Uri.base);
+            return MaterialPageRoute<void>(settings: settings, builder: (_) => UnsubscribeScreen(token: token));
+          }
+          return null;
         },
       ),
     );
