@@ -94,6 +94,9 @@ class AdjustmentService {
         "items": items.map((r) => r.toJson()).toList(),
         "note": note.trim(),
         "photo_url": photoUrl,
+        // Transfers: the server reads the stores from this column and emails both of them.
+        // Only our fixed store inboxes can ever result from it; unknown names are ignored.
+        "transfer_locations": kind == "TO" ? transferLocations : null,
       });
     } on BackendException catch (e) {
       // 409 = this report was already logged on an earlier attempt: fine.

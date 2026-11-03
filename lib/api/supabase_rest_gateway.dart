@@ -28,19 +28,28 @@ class SupabaseRestGateway implements BackendGateway {
   final String baseUrl;
   final String anonKey;
 
-  /// Returns the exchange-issued session JWT; sent as X-Quai-Session so edge
-  /// functions can verify the caller (role claim) before writing or emailing.
+  /// Returns the exchange-issued session JWT; sent as the Authorization bearer on every
+  /// authenticated call (and as X-Quai-Session on edge-function calls).
   final String? Function()? sessionToken;
   final Dio _dio;
 
   @override
   bool get configured => baseUrl.isNotEmpty && anonKey.isNotEmpty;
 
-  Map<String, String> _headers([Map<String, String>? extra]) => <String, String>{
-        "apikey": anonKey,
-        "Authorization": "Bearer $anonKey",
-        ...?extra,
-      };
+  /// Headers for an authenticated call. The public key identifies the project (apikey);
+  /// the Authorization bearer is the exchange-issued session JWT when somebody is signed
+  /// in, so Postgres RLS / Storage see the carrier (role + carrier claims) instead of "anon".
+  /// Signed out, it falls back to the public key (read-only announcements).
+  Map<String, String> _headers([Map<String, String>? extra]) {
+    final jwt = sessionToken?.call();
+    final bearer = (jwt != null && jwt.isNotEmpty) ? jwt : anonKey;
+    return <String, String>{
+      "apikey": anonKey,
+      "Authorization": "Bearer " + bearer,
+      ...?extra,
+    };
+  }
+
 
   static String _message(dynamic data) {
     if (data is Map) {
@@ -58,8 +67,10 @@ class SupabaseRestGateway implements BackendGateway {
     Map<String, String>? headers,
     bool auth = true,
   }) async {
+    // Edge functions also accept the session as X-Quai-Session (kept for the email call
+    // only: a custom header on every REST call would force a CORS pre-flight for nothing).
     final jwt = sessionToken?.call();
-    if (jwt != null && jwt.isNotEmpty) {
+    if (jwt != null && jwt.isNotEmpty && url.contains("/functions/v1/")) {
       headers = <String, String>{...?headers, "X-Quai-Session": jwt};
     }
     try {
@@ -258,15 +269,13 @@ class SupabaseRestGateway implements BackendGateway {
   @override
   Future<void> upsertHistory(List<Map<String, dynamic>> rows) async {
     if (rows.isEmpty) return;
+    // Server-side function (security definer): a job reassigned to another truck is handled
+    // row by row, where a direct upsert would reject the whole batch under RLS.
     await _send(
       "POST",
-      _rest("delivery_history"),
-      query: const <String, dynamic>{"on_conflict": "so_num"},
-      data: rows,
-      headers: const <String, String>{
-        "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates,return=minimal",
-      },
+      "$baseUrl/rest/v1/rpc/upsert_delivery_history",
+      data: <String, dynamic>{"rows": rows},
+      headers: const <String, String>{"Content-Type": "application/json"},
     );
   }
 
