@@ -8,10 +8,29 @@ import "../logic/middleware_events.dart";
 /// bundle. This port never holds it. The key lives on a server-side proxy that
 /// accepts the user's access token; this class only calls the proxy.
 ///
-/// PROPOSED PROXY CONTRACT (not yet built):
-///   GET <QUAI_MIDDLEWARE_PROXY_URL>?location=Ste-Agathe&from=YYYY-MM-DD&to=YYYY-MM-DD
-///   Authorization: Bearer <accessToken>   -> { "events": [MiddlewareEvent...] }
+/// PROXY (built into the exchange server, server/src/middleware.js):
+///   GET <exchange base>/middleware/events?location=Ste-Agathe&from=YYYY-MM-DD&to=YYYY-MM-DD
+///   Authorization: Bearer <SESSION JWT>   (role logistique or superuser)
+///   -> the middleware's JSON, unchanged: { "events": [MiddlewareEvent...] }
 /// The proxy adds x-api-key and forwards to /api/netsuite/events.
+///
+/// CONFIG: nothing extra to set. The proxy lives on the same server as the sign-in, so its URL
+/// is derived from QUAI_EXCHANGE_URL ([middlewareProxyUrlFor]). QUAI_MIDDLEWARE_PROXY_URL
+/// remains as an optional override.
+/// Where the proxy lives: the explicit override when given, else the exchange URL
+/// (`https://host/exchange` or `https://host`) with the proxy path. "" when neither is set.
+String middlewareProxyUrlFor({required String exchangeUrl, String override = ""}) {
+  final o = override.trim();
+  if (o.isNotEmpty) return o;
+  var base = exchangeUrl.trim();
+  if (base.isEmpty) return "";
+  while (base.endsWith("/")) {
+    base = base.substring(0, base.length - 1);
+  }
+  if (base.endsWith("/exchange")) base = base.substring(0, base.length - "/exchange".length);
+  return "$base/middleware/events";
+}
+
 abstract class MiddlewareSource {
   /// False when no proxy is configured; the UI then says pick-ups are unavailable
   /// instead of silently showing an empty Pick-ups tab.
@@ -62,12 +81,12 @@ class ProxyMiddlewareSource implements MiddlewareSource {
           "_": DateTime.now().millisecondsSinceEpoch,
         },
         options: Options(headers: <String, String>{
-          if (t != null) "Authorization": "Bearer $t",
+          if (t != null && t.isNotEmpty) "Authorization": "Bearer $t",
           "Cache-Control": "no-store",
         }),
       );
       final data = res.data;
-      final list = data is Map ? data["events"] : null;
+      final list = data is Map ? data["events"] : (data is List ? data : null);
       if (list is! List) return <MiddlewareEvent>[];
       return list.whereType<Map>().map((e) => MiddlewareEvent.fromJson(e.cast<String, dynamic>())).toList();
     } catch (_) {

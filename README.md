@@ -55,9 +55,11 @@ guards rather than decoration:
 No test and no other file loads a PDF engine.
 
 **Middleware (pick-ups).** The reference app shipped the middleware `x-api-key` in the
-web bundle. This port never holds it: it calls a server-side proxy at
-`QUAI_MIDDLEWARE_PROXY_URL` (proposed contract in `api/middleware_source.dart`). Until that
-proxy exists the Pick-ups tab says so instead of showing an empty list.
+web bundle. This port never holds it: it calls the proxy built into the exchange server
+(`GET /middleware/events`, `server/src/middleware.js`) with the session token. The proxy URL is
+derived from `QUAI_EXCHANGE_URL` (one dart-define for sign-in and pick-ups; optional override
+`QUAI_MIDDLEWARE_PROXY_URL`). Without an exchange URL, or without `MIDDLEWARE_API_KEY` on the server, the Pick-ups tab
+says so instead of showing an empty list.
 
 **Do not upgrade `pdfrx` to 2.x.** It pulls `pdfium_dart`, whose native-assets hook needs
 a C compiler during `flutter test`. The platform build host has none, so the test gate fails
@@ -79,7 +81,7 @@ runtime as `process.env.CREWDLE_API_KEY` — never committed, never logged.
 
 ## Pending — NOT delivered
 
-0. **Middleware proxy** (`QUAI_MIDDLEWARE_PROXY_URL`) for Logistique pick-ups — not built.
+0. **Middleware proxy** for Logistique pick-ups — built (exchange server, PR #2); live only once the server is deployed with `MIDDLEWARE_API_KEY` and the app is built with `QUAI_EXCHANGE_URL`.
    **PDF rendering, text extraction, print and download are untested in a real browser**
    (they need a signed-in session to fetch a real ticket); only their surrounding behaviour
    is covered by tests.

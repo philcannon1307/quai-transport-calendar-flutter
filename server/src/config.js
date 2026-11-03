@@ -1,6 +1,7 @@
 import { scryptSync, randomBytes } from "node:crypto";
 import { CARRIERS, SUPERUSER_NAME } from "./roster.js";
 
+export const DEFAULT_MIDDLEWARE_URL = "https://quai-backend-methods-production.up.railway.app";
 export const DEFAULT_JOB_SERVICE_URL = "https://quai-contractor-calendar-production.up.railway.app";
 
 /** "scrypt$<salt b64>$<hash b64>" -- produced by `npm run hash-password`. */
@@ -104,6 +105,18 @@ export function loadConfig(env = process.env) {
     warnings.push("SUPERUSER_USERNAME / SUPERUSER_PASSWORD_HASH not set: the /admin SuperUser login is disabled.");
   }
 
+  // --- Pick-ups proxy (middleware) --------------------------------------------
+  const middlewareUrl = (env.MIDDLEWARE_URL || DEFAULT_MIDDLEWARE_URL).replace(/\/+$/, "");
+  try {
+    const u = new URL(middlewareUrl);
+    if (u.protocol !== "https:" && !/^(localhost|127\.0\.0\.1)$/.test(u.hostname)) errors.push("MIDDLEWARE_URL must be https.");
+  } catch {
+    errors.push("MIDDLEWARE_URL is not a valid URL.");
+  }
+  const middlewareTimeoutMs = int(env, "MIDDLEWARE_TIMEOUT_MS", 15000, 1000, 60000, errors);
+  const middlewareApiKey = env.MIDDLEWARE_API_KEY ?? "";
+  if (!middlewareApiKey) warnings.push("MIDDLEWARE_API_KEY not set: the Pick-ups proxy answers 503 until it is.");
+
   const trustProxyHops = int(env, "TRUST_PROXY_HOPS", 1, 0, 5, errors);
   const port = int(env, "PORT", 3000, 1, 65535, errors);
 
@@ -113,12 +126,15 @@ export function loadConfig(env = process.env) {
     config: {
       port, credentials, sessionSecret, sessionTtlSeconds, allowedOrigins, jobServiceUrl, jobTimeoutMs,
       superUser, trustProxyHops,
+      middleware: { url: middlewareUrl, apiKey: middlewareApiKey, timeoutMs: middlewareTimeoutMs },
       // Brute-force defences (see README "Security").
       limits: {
         perIpRequests: { max: 30, windowMs: 60_000 },
         carrierPerIp: { max: 5, windowMs: 10 * 60_000, lockMs: 15 * 60_000 },
         carrierGlobal: { max: 20, windowMs: 60 * 60_000, lockMs: 30 * 60_000 },
         superPerIp: { max: 3, windowMs: 30 * 60_000, lockMs: 30 * 60_000 },
+        middlewarePerIp: { max: 120, windowMs: 60_000 },
+        middlewarePerSession: { max: 60, windowMs: 60_000 },
         superGlobal: { max: 10, windowMs: 60 * 60_000, lockMs: 60 * 60_000 },
       },
     },

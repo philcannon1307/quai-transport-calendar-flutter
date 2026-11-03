@@ -87,15 +87,19 @@ final sessionExpiredProvider = StateProvider<bool>((ref) => false);
 
 // --- Orders -----------------------------------------------------------------
 
-/// Middleware proxy URL (holds the x-api-key server-side). Empty until it exists.
-final middlewareProxyUrlProvider =
-    Provider<String>((ref) => const String.fromEnvironment("QUAI_MIDDLEWARE_PROXY_URL"));
+/// Pick-ups proxy URL (the x-api-key stays on the server). Derived from QUAI_EXCHANGE_URL, so
+/// one dart-define configures sign-in and pick-ups; QUAI_MIDDLEWARE_PROXY_URL overrides it.
+final middlewareProxyUrlProvider = Provider<String>((ref) => middlewareProxyUrlFor(
+      exchangeUrl: ref.watch(exchangeUrlProvider),
+      override: const String.fromEnvironment("QUAI_MIDDLEWARE_PROXY_URL"),
+    ));
 
 final middlewareSourceProvider = Provider<MiddlewareSource>((ref) {
   final url = ref.watch(middlewareProxyUrlProvider);
   if (url.isEmpty) return const UnconfiguredMiddlewareSource();
   final session = ref.watch(sessionProvider);
-  return ProxyMiddlewareSource(proxyUrl: url, token: session.token);
+  // The SESSION JWT (role claim), not the job-service token: the proxy verifies it.
+  return ProxyMiddlewareSource(proxyUrl: url, token: session.sessionToken);
 });
 
 final ordersRepositoryProvider = Provider<OrdersRepository>(
