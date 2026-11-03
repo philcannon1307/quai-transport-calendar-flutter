@@ -3,6 +3,8 @@ import "package:flutter_riverpod/flutter_riverpod.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:intl/date_symbol_data_local.dart";
 
+import "package:quai_calendar/api/orders_repository.dart";
+import "package:quai_calendar/api/session.dart";
 import "package:quai_calendar/app.dart";
 import "package:quai_calendar/i18n/i18n.dart";
 import "package:quai_calendar/l10n/key_map.dart";
@@ -17,10 +19,12 @@ Strings _strings() {
   return Strings.forTests(values);
 }
 
-Widget _app() => ProviderScope(
+Widget _app({SessionStore? store}) => ProviderScope(
       overrides: <Override>[
         preloadedStringsProvider.overrideWithValue(_strings()),
         ordersProvider.overrideWith((ref) async => <Order>[]),
+        ordersLoadProvider.overrideWith((ref) async => const OrdersLoad()),
+        if (store != null) sessionStoreProvider.overrideWithValue(store),
       ],
       child: const QuaiApp(),
     );
@@ -39,8 +43,10 @@ void main() {
     expect(find.byType(LoginScreen), findsOneWidget);
   });
 
-  testWidgets("named routes resolve to their screens", (tester) async {
-    await tester.pumpWidget(_app());
+  testWidgets("named routes resolve to their screens (signed in)", (tester) async {
+    final store = MemorySessionStore();
+    Session(store).signIn(token: "t", name: "InterQL");
+    await tester.pumpWidget(_app(store: store));
     await tester.pump();
     final nav = tester.state<NavigatorState>(find.byType(Navigator));
     nav.pushNamed("/calendar");

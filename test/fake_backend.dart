@@ -4,9 +4,8 @@ import "package:quai_calendar/api/backend_gateway.dart";
 import "package:quai_calendar/logic/announcements.dart";
 
 class SentEmail {
-  SentEmail(this.template, this.recipient, this.key, this.data);
+  SentEmail(this.template, this.key, this.data);
   final String template;
-  final String? recipient;
   final String key;
   final Map<String, dynamic> data;
 }
@@ -24,6 +23,7 @@ class FakeBackend implements BackendGateway {
   int adjustmentRowStatus = 500;
   bool failRemoveFiles = false;
   Set<String> suppressed = <String>{};
+  bool suppressAll = false;
 
   final List<SentEmail> emails = <SentEmail>[];
   final List<Map<String, dynamic>> uploads = <Map<String, dynamic>>[];
@@ -104,13 +104,12 @@ class FakeBackend implements BackendGateway {
   @override
   Future<EmailOutcome> sendEmail({
     required String template,
-    String? recipient,
     required String idempotencyKey,
     required Map<String, dynamic> data,
   }) async {
     if (failEmail) throw const BackendException(500, "email failed");
-    emails.add(SentEmail(template, recipient, idempotencyKey, data));
-    if (recipient != null && suppressed.contains(recipient)) return EmailOutcome.suppressed;
+    emails.add(SentEmail(template, idempotencyKey, data));
+    if (suppressAll) return EmailOutcome.suppressed;
     return EmailOutcome.sent;
   }
 

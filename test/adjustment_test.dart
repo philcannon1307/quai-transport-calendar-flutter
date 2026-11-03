@@ -75,8 +75,9 @@ void main() {
       expect((b.adjustments.single["items"] as List), hasLength(1));
       expect(b.emails, hasLength(1));
       expect(b.emails.single.template, "order-adjustment");
-      expect(b.emails.single.recipient, adjustmentRecipients("SADM - David").single);
-      expect(b.emails.single.key, startsWith("adjustment-rep-1-"));
+      expect(b.emails.single.key, "adjustment-rep-1");
+      expect(b.emails.single.data, <String, dynamic>{"reportId": "rep-1", "orderNum": "SO100"},
+          reason: "the client sends ids only; the server computes the recipient");
       expect(b.sentMarks, <String>["adjustment:rep-1"]);
     });
 
@@ -94,8 +95,10 @@ void main() {
         transferLocations: locs,
       );
       expect(r.isOk, isTrue);
-      expect(b.emails.map((e) => e.recipient).toList(), expected);
-      expect(b.emails.map((e) => e.key).toSet(), hasLength(b.emails.length), reason: "one idempotency key per recipient");
+      expect(expected, hasLength(2), reason: "local validation still sees both stores");
+      expect(b.emails, hasLength(1), reason: "one server call; the SERVER fans out to both stores");
+      expect(b.emails.single.data.containsKey("recipientEmail"), isFalse);
+      expect(b.emails.single.data.containsKey("recipient"), isFalse);
     });
 
     test("no filled rows: nothing is sent", () async {
@@ -127,7 +130,7 @@ void main() {
       final path = b.uploads.single["path"] as String;
       expect(path, "adjustments/2026-11-03/pic-Ma_photo__.jpg");
       expect(b.adjustments.single["photo_url"], contains(path));
-      expect(b.emails.single.data["photoUrl"], contains(path));
+      expect(b.emails.single.data.containsKey("photoUrl"), isFalse, reason: "the server reads the photo from the logged row");
     });
 
     test("RETRY: a 409 on the log row (already logged) still sends the email with the SAME keys", () async {
@@ -141,11 +144,12 @@ void main() {
       expect(b.sentMarks, isNotEmpty);
     });
 
-    test("a failed log row (not a duplicate) does not claim the email was recorded", () async {
+    test("a failed log row (not a duplicate) sends nothing: the server mails from the logged row", () async {
       final b = FakeBackend()..failAdjustmentRow = true;
       final r = await _svc(b).submit(reportId: "x", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "");
-      expect(r.isOk, isTrue, reason: "the email still goes out");
-      expect(b.sentMarks, isEmpty, reason: "but the row cannot be marked sent");
+      expect(r.failure, AdjustmentFailure.log);
+      expect(b.emails, isEmpty);
+      expect(b.sentMarks, isEmpty);
     });
 
     test("email failure is reported", () async {
@@ -155,8 +159,7 @@ void main() {
     });
 
     test("an unsubscribed recipient is counted, not hidden", () async {
-      final b = FakeBackend();
-      b.suppressed = adjustmentRecipients("InterQL").toSet();
+      final b = FakeBackend()..suppressAll = true;
       final r = await _svc(b).submit(reportId: "x", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "");
       expect(r.isOk, isTrue);
       expect(r.suppressedCount, 1);

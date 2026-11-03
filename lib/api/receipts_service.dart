@@ -87,12 +87,12 @@ class ReceiptsService {
       outcome = await gateway.sendEmail(
         template: receiptTemplateName(bol: bol),
         idempotencyKey: "${bol ? "bol" : "receipt"}-${rowId ?? path}",
+        // Ids only: the server reads the receipt row / storage object itself and
+        // fixes the recipient by template (receipt -> accounting, BOL -> SADM).
         data: <String, dynamic>{
-          "driverName": driver.trim(),
-          "carrierName": carrierName,
-          "note": note.trim(),
-          "receiptUrl": publicUrl,
-          "uploadedAt": stamp(now),
+          "receiptId": rowId,
+          "storagePath": path,
+          "kind": bol ? "bol" : "receipt",
         },
       );
     } on BackendException {

@@ -74,7 +74,16 @@ final authServiceProvider = Provider<AuthService>((ref) {
 });
 
 /// Signed-in carrier display name, or null.
-final currentCarrierProvider = StateProvider<String?>((ref) => null);
+final currentCarrierProvider = StateProvider<String?>((ref) {
+  // Restored from the persisted session, so a page refresh or a deep link keeps
+  // the signed-in carrier.
+  final s = ref.read(sessionProvider);
+  return s.token() == null ? null : s.name();
+});
+
+/// True after the backend rejected the session token (401/403): the session was
+/// cleared and the login screen explains why.
+final sessionExpiredProvider = StateProvider<bool>((ref) => false);
 
 // --- Orders -----------------------------------------------------------------
 
@@ -107,6 +116,14 @@ final ordersLoadProvider = FutureProvider<OrdersLoad>((ref) async {
         primaryToken: token,
         linkedTokens: session.linkedTokens(),
       );
+  if (load.unauthorized) {
+    // 401/403 from the job service: the token expired. Never show this as an
+    // empty calendar; clear the session and send the user to sign in again.
+    session.signOut();
+    ref.read(sessionExpiredProvider.notifier).state = true;
+    ref.read(currentCarrierProvider.notifier).state = null;
+    return load;
+  }
   session.rememberToTokens(load.toTokens);
   // Mirror what we just loaded into delivery_history (best effort, never blocks).
   unawaited(ref.read(historyServiceProvider).snapshot(load.orders));
@@ -193,7 +210,11 @@ final backendProvider = Provider<BackendGateway>((ref) {
   final url = ref.watch(backendUrlProvider);
   final key = ref.watch(backendKeyProvider);
   if (url.isEmpty || key.isEmpty) return const UnconfiguredBackend();
-  return SupabaseRestGateway(baseUrl: url, anonKey: key);
+  return SupabaseRestGateway(
+    baseUrl: url,
+    anonKey: key,
+    sessionToken: () => ref.read(sessionProvider).sessionToken(),
+  );
 });
 
 final receiptsServiceProvider = Provider<ReceiptsService>((ref) => ReceiptsService(gateway: ref.watch(backendProvider)));
@@ -244,4 +265,5 @@ void signOutNow(WidgetRef ref) {
   ref.read(sessionProvider).signOut();
   ref.read(currentCarrierProvider.notifier).state = null;
   ref.read(historyDaysProvider.notifier).state = 0;
+  ref.read(sessionExpiredProvider.notifier).state = false;
 }

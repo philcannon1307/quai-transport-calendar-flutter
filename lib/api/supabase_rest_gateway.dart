@@ -16,7 +16,7 @@ import "backend_gateway.dart";
 /// write credential for those tables. The app therefore never ships it by
 /// default: it must be supplied at build time.
 class SupabaseRestGateway implements BackendGateway {
-  SupabaseRestGateway({required String baseUrl, required this.anonKey, Dio? dio})
+  SupabaseRestGateway({required String baseUrl, required this.anonKey, this.sessionToken, Dio? dio})
       : baseUrl = baseUrl.replaceAll(RegExp(r"/+$"), ""),
         _dio = dio ??
             Dio(BaseOptions(
@@ -27,6 +27,10 @@ class SupabaseRestGateway implements BackendGateway {
 
   final String baseUrl;
   final String anonKey;
+
+  /// Returns the exchange-issued session JWT; sent as X-Quai-Session so edge
+  /// functions can verify the caller (role claim) before writing or emailing.
+  final String? Function()? sessionToken;
   final Dio _dio;
 
   @override
@@ -54,6 +58,10 @@ class SupabaseRestGateway implements BackendGateway {
     Map<String, String>? headers,
     bool auth = true,
   }) async {
+    final jwt = sessionToken?.call();
+    if (jwt != null && jwt.isNotEmpty) {
+      headers = <String, String>{...?headers, "X-Quai-Session": jwt};
+    }
     try {
       final res = await _dio.request<dynamic>(
         url,
@@ -225,7 +233,6 @@ class SupabaseRestGateway implements BackendGateway {
   @override
   Future<EmailOutcome> sendEmail({
     required String template,
-    String? recipient,
     required String idempotencyKey,
     required Map<String, dynamic> data,
   }) async {
@@ -234,7 +241,6 @@ class SupabaseRestGateway implements BackendGateway {
       "$baseUrl/functions/v1/send-transactional-email",
       data: <String, dynamic>{
         "templateName": template,
-        if (recipient != null) "recipientEmail": recipient,
         "idempotencyKey": idempotencyKey,
         "templateData": data,
       },

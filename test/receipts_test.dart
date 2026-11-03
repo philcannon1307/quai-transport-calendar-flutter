@@ -64,7 +64,9 @@ void main() {
       expect(b.uploads.single["bytes"] as int, lessThanOrEqualTo(300 * 1024));
       expect(b.receipts.single["driver_name"], "Marc");
       expect(b.emails.single.template, "receipt-uploaded");
-      expect(b.emails.single.recipient, isNull, reason: "recipient is fixed server-side, never chosen by the client");
+      expect(b.emails.single.data.containsKey("recipientEmail"), isFalse, reason: "recipient is fixed server-side, never chosen by the client");
+      expect(b.emails.single.data.keys.toSet(), <String>{"receiptId", "storagePath", "kind"}, reason: "ids only, no free text or addresses");
+      expect(b.emails.single.data["storagePath"], b.uploads.single["path"]);
       expect(b.sentMarks, <String>["receipt:rcpt-1"]);
     });
 
@@ -134,7 +136,6 @@ class _SuppressAll extends FakeBackend {
   @override
   Future<EmailOutcome> sendEmail({
     required String template,
-    String? recipient,
     required String idempotencyKey,
     required Map<String, dynamic> data,
   }) async =>

@@ -3,8 +3,20 @@ import "session.dart";
 
 /// Result of a sign-in: one access token per truck the login covers.
 class AuthResult {
-  const AuthResult({required this.primaryToken, this.linkedTokens = const <String, String>{}});
+  const AuthResult({
+    required this.primaryToken,
+    this.linkedTokens = const <String, String>{},
+    this.role = kRoleCarrier,
+    this.sessionToken,
+  });
   final String primaryToken;
+
+  /// carrier | logistique | superuser, as returned by the server. The client
+  /// never derives it locally.
+  final String role;
+
+  /// Signed session JWT (role claim, short TTL) for backend calls, if issued.
+  final String? sessionToken;
   /// backend username -> access token
   final Map<String, String> linkedTokens;
 }
@@ -38,7 +50,8 @@ abstract class AuthService {
 class TokenExchangeAuthService implements AuthService {
   // PROPOSED CONTRACT for the SuperUser exchange (same endpoint):
   //   POST <exchangeUrl> {"carrier": "SuperUser", "username": ..., "code": <password>}
-  //   -> {"accessToken": "...", "linkedTokens": {"<backend username>": "<token>", ...}}
+  //   -> {"accessToken": "...", "linkedTokens": {"<backend username>": "<token>", ...},
+  //       "role": "superuser", "sessionToken": "<signed JWT, role claim>"}
   // linkedTokens must hold a token for EVERY backend account; 401/403 on a bad login.
   TokenExchangeAuthService({required this.exchangeUrl, required this.post});
 
@@ -64,8 +77,17 @@ class TokenExchangeAuthService implements AuthService {
       });
     }
     if (linked.isEmpty) throw AuthFailure("Invalid response from token exchange.");
+    // SuperUser is whatever the SERVER says: a response without role=superuser is
+    // rejected, so a misbehaving endpoint cannot grant the admin UI.
+    if (json["role"] != kRoleSuperUser) throw AuthFailure("Invalid response from token exchange.");
     final primary = json["accessToken"];
-    return AuthResult(primaryToken: primary is String ? primary : "", linkedTokens: linked);
+    final jwt = json["sessionToken"];
+    return AuthResult(
+      primaryToken: primary is String ? primary : "",
+      linkedTokens: linked,
+      role: kRoleSuperUser,
+      sessionToken: jwt is String && jwt.isNotEmpty ? jwt : null,
+    );
   }
 
   @override
@@ -86,7 +108,14 @@ class TokenExchangeAuthService implements AuthService {
         if (v is String) linked[k.toString()] = v;
       });
     }
-    return AuthResult(primaryToken: token, linkedTokens: linked);
+    final role = json["role"];
+    final jwt = json["sessionToken"];
+    return AuthResult(
+      primaryToken: token,
+      linkedTokens: linked,
+      role: role is String && isKnownRole(role) ? role : kRoleCarrier,
+      sessionToken: jwt is String && jwt.isNotEmpty ? jwt : null,
+    );
   }
 }
 

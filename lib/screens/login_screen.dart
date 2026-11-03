@@ -6,6 +6,7 @@ import "../i18n/i18n.dart";
 import "../models/carrier.dart";
 import "../state/providers.dart";
 import "../theme.dart";
+import "../widgets/bilingual.dart";
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -42,7 +43,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final Carrier? carrier = carrierByDisplayName(name);
       if (carrier == null) throw Exception("unknown carrier");
       final res = await ref.read(authServiceProvider).signIn(carrier: carrier, code: _code.text.trim());
-      ref.read(sessionProvider).signIn(token: res.primaryToken, name: name, linkedTokens: res.linkedTokens);
+      ref.read(sessionProvider).signIn(
+        token: res.primaryToken,
+        name: name,
+        linkedTokens: res.linkedTokens,
+        role: res.role,
+        sessionToken: res.sessionToken,
+      );
+      ref.read(sessionExpiredProvider.notifier).state = false;
       ref.read(currentCarrierProvider.notifier).state = name;
       if (mounted) Navigator.of(context).pushReplacementNamed("/calendar");
     } catch (e) {
@@ -98,6 +106,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 4),
                         Text(s.t("login.subtitle"), style: const TextStyle(color: Colors.black54, fontSize: 13)),
                         const SizedBox(height: 18),
+                        if (ref.watch(sessionExpiredProvider)) ...<Widget>[
+                          Container(
+                            key: const Key("session-expired"),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(color: const Color(0xFFFFF4E5), borderRadius: BorderRadius.circular(8)),
+                            child: Text(
+                              bi(s, "Session expirée — reconnectez-vous.", "Session expired — sign in again."),
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         InputDecorator(
                           decoration: InputDecoration(
                             labelText: s.t("login.unit"),

@@ -27,6 +27,8 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   final TextEditingController _pass = TextEditingController();
   bool _busy = false;
   String? _error;
+  String? _userErr;
+  String? _passErr;
 
   @override
   void dispose() {
@@ -36,13 +38,34 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   }
 
   Future<void> _login(Strings s) async {
+    // Field validation first: an empty form never reaches the backend.
+    final userEmpty = _user.text.trim().isEmpty;
+    final passEmpty = _pass.text.isEmpty;
+    if (userEmpty || passEmpty) {
+      setState(() {
+        _error = null;
+        _userErr = userEmpty ? bi(s, "Le nom d'utilisateur est requis.", "Username is required.") : null;
+        _passErr = passEmpty ? bi(s, "Le mot de passe est requis.", "Password is required.") : null;
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
+      _userErr = null;
+      _passErr = null;
     });
     try {
       final res = await ref.read(authServiceProvider).signInSuperUser(username: _user.text.trim(), password: _pass.text);
-      ref.read(sessionProvider).signIn(token: kSuperToken, name: kSuperUserName, linkedTokens: res.linkedTokens);
+      // The role comes from the exchange response (it rejects anything but superuser).
+      ref.read(sessionProvider).signIn(
+        token: res.primaryToken.isNotEmpty ? res.primaryToken : res.linkedTokens.values.first,
+        name: kSuperUserName,
+        linkedTokens: res.linkedTokens,
+        role: res.role,
+        sessionToken: res.sessionToken,
+      );
+      ref.read(sessionExpiredProvider.notifier).state = false;
       ref.read(currentCarrierProvider.notifier).state = kSuperUserName;
       ref.invalidate(adminLoadProvider);
     } on AuthFailure catch (e) {
@@ -62,7 +85,12 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     final s = StringsScope.of(context);
     final isSuper = ref.watch(sessionProvider).isSuperUser && ref.watch(currentCarrierProvider) == kSuperUserName;
     return Scaffold(
-      appBar: AppBar(
+      // Reference: the admin sign-in is a LIGHT page (white background, bordered
+      // card); only the Login page uses the dark navy theme.
+      backgroundColor: isSuper ? null : Colors.white,
+      appBar: !isSuper
+          ? null
+          : AppBar(
         title: Text(s.t("admin.title")),
         actions: <Widget>[
           if (isSuper)
@@ -89,30 +117,85 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Text(s.t("admin.subtitle"), style: const TextStyle(color: Colors.black54, fontSize: 13)),
+                Row(
+                  children: <Widget>[
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(color: kNavy, borderRadius: BorderRadius.circular(8)),
+                      child: const Icon(Icons.verified_user_outlined, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text.rich(TextSpan(children: <InlineSpan>[
+                        TextSpan(text: "${s.t("brand.name")} · ", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18)),
+                        TextSpan(text: s.t("brand.admin"), style: const TextStyle(color: Colors.black54, fontSize: 18)),
+                      ])),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+                Container(
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFCFCFD),
+                    border: Border.all(color: const Color(0xFFE2E5EA)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      Text(s.t("admin.title"), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 6),
+                      Text(s.t("admin.subtitle"), style: const TextStyle(color: Colors.black54, fontSize: 13)),
+                      const SizedBox(height: 20),
+                      TextField(
+                        key: const Key("admin-user"),
+                        controller: _user,
+                        autocorrect: false,
+                        onChanged: (_) {
+                          if (_userErr != null || _error != null) setState(() { _userErr = null; _error = null; });
+                        },
+                        decoration: InputDecoration(
+                          labelText: s.t("admin.username"),
+                          errorText: _userErr,
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const Key("admin-pass"),
+                        controller: _pass,
+                        obscureText: true,
+                        onChanged: (_) {
+                          if (_passErr != null || _error != null) setState(() { _passErr = null; _error = null; });
+                        },
+                        onSubmitted: (_) => _busy ? null : _login(s),
+                        decoration: InputDecoration(
+                          labelText: s.t("admin.password"),
+                          errorText: _passErr,
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                      if (_error != null) ...<Widget>[
+                        const SizedBox(height: 10),
+                        Text(_error!, key: const Key("admin-error"), style: const TextStyle(color: Color(0xFF9B1C1C), fontSize: 13)),
+                      ],
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        key: const Key("admin-submit"),
+                        style: FilledButton.styleFrom(backgroundColor: kNavy),
+                        onPressed: _busy ? null : () => _login(s),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Text(_busy ? s.t("admin.aggregating") : s.t("admin.submit")),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
-                TextField(
-                  key: const Key("admin-user"),
-                  controller: _user,
-                  decoration: InputDecoration(labelText: s.t("admin.username"), border: const OutlineInputBorder()),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  key: const Key("admin-pass"),
-                  controller: _pass,
-                  obscureText: true,
-                  decoration: InputDecoration(labelText: s.t("admin.password"), border: const OutlineInputBorder()),
-                ),
-                if (_error != null) ...<Widget>[
-                  const SizedBox(height: 10),
-                  Text(_error!, key: const Key("admin-error"), style: const TextStyle(color: Color(0xFF9B1C1C), fontSize: 13)),
-                ],
-                const SizedBox(height: 16),
-                FilledButton(
-                  key: const Key("admin-submit"),
-                  onPressed: _busy ? null : () => _login(s),
-                  child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Text(_busy ? s.t("admin.aggregating") : s.t("admin.submit"))),
-                ),
+                Text(s.t("admin.footer"), textAlign: TextAlign.center, style: const TextStyle(color: Colors.black45, fontSize: 12)),
               ],
             ),
           ),

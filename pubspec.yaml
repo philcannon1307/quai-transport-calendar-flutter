@@ -13,7 +13,8 @@ dependencies:
     sdk: flutter
   intl: any
   flutter_riverpod: ^2.5.1
-  go_router: ^14.2.7
+  # Session persistence (access tokens + role only, never credentials).
+  shared_preferences: ^2.3.2
   dio: ^5.7.0
   # Picking-ticket viewer, PDF text (contact extraction), print/download, tel:/Maps links.
   # PINNED TO 1.x ON PURPOSE. pdfrx 2.x depends on pdfium_dart, whose native-assets

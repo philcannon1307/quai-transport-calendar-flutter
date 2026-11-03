@@ -11,6 +11,8 @@ import "theme.dart";
 import "api/unsubscribe_service.dart";
 import "screens/admin_screen.dart";
 import "screens/unsubscribe_screen.dart";
+import "screens/not_found_screen.dart";
+import "widgets/auth_guard.dart";
 
 class QuaiApp extends ConsumerWidget {
   const QuaiApp({super.key});
@@ -39,24 +41,43 @@ class QuaiApp extends ConsumerWidget {
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
-        routes: <String, WidgetBuilder>{
-          "/": (_) => const LoginScreen(),
-          "/calendar": (_) => const CalendarScreen(),
-          "/my-orders": (_) => const MyOrdersScreen(),
-          "/admin": (_) => const AdminScreen(),
-        },
-        // Routes with a query string (/unsubscribe?token=...) never match the
-        // exact-name table above, so they are resolved here.
-        onGenerateRoute: (settings) {
-          final name = settings.name ?? "";
-          final path = Uri.tryParse(name)?.path ?? name;
-          if (path == "/unsubscribe") {
-            final token = unsubscribeToken(routeName: name, pageUri: Uri.base);
-            return MaterialPageRoute<void>(settings: settings, builder: (_) => UnsubscribeScreen(token: token));
-          }
-          return null;
-        },
+        // ONE route table (onGenerateRoute) so the URL the browser opened is honoured
+        // for known paths and an unknown path shows the NotFound screen instead of
+        // silently falling back to another page.
+        onGenerateInitialRoutes: (String initial) => <Route<dynamic>>[_routeFor(RouteSettings(name: initial))],
+        onGenerateRoute: _routeFor,
+        onUnknownRoute: _routeFor,
       ),
     );
   }
+}
+
+
+/// Path of a route name, without query, hash leftovers or a trailing slash.
+String routePath(String? name) {
+  final raw = (name == null || name.isEmpty) ? "/" : name;
+  var path = Uri.tryParse(raw)?.path ?? raw;
+  if (path.length > 1 && path.endsWith("/")) path = path.substring(0, path.length - 1);
+  return path.isEmpty ? "/" : path;
+}
+
+Route<dynamic> _routeFor(RouteSettings settings) {
+  final name = settings.name ?? "/";
+  final Widget page;
+  switch (routePath(name)) {
+    case "/":
+    case "/login":
+      page = const LoginScreen();
+    case "/calendar":
+      page = const AuthGuard(child: CalendarScreen());
+    case "/my-orders":
+      page = const AuthGuard(child: MyOrdersScreen());
+    case "/admin":
+      page = const AdminScreen();
+    case "/unsubscribe":
+      page = UnsubscribeScreen(token: unsubscribeToken(routeName: name, pageUri: Uri.base));
+    default:
+      page = const NotFoundScreen();
+  }
+  return MaterialPageRoute<void>(settings: settings, builder: (_) => page);
 }

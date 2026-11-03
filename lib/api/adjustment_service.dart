@@ -7,7 +7,7 @@ import "../logic/ids.dart";
 import "../logic/image_compress.dart";
 import "backend_gateway.dart";
 
-enum AdjustmentFailure { noItems, unreadablePhoto, notConfigured, photoUpload, badRecipient, email }
+enum AdjustmentFailure { noItems, unreadablePhoto, notConfigured, photoUpload, badRecipient, log, email }
 
 class AdjustmentResult {
   const AdjustmentResult.ok({this.suppressedCount = 0}) : failure = null;
@@ -99,32 +99,26 @@ class AdjustmentService {
       // 409 = this report was already logged on an earlier attempt: fine.
       rowLogged = e.status == 409;
     }
+    // The server builds the email FROM the logged row, so without a row there is
+    // nothing to send. Fail visibly; the same reportId makes the retry safe.
+    if (!rowLogged) return const AdjustmentResult.failed(AdjustmentFailure.log);
 
+    // The client sends ONLY ids. The server looks the report up, derives the
+    // recipients (group inbox; transfers go to both stores) from the verified
+    // sender and the order, and rejects anything that is not a groupeql.com mailbox.
     var suppressed = 0;
     try {
-      for (final recipient in recipients) {
-        final outcome = await gateway.sendEmail(
-          template: "order-adjustment",
-          recipient: recipient,
-          idempotencyKey: "adjustment-$reportId-$recipient",
-          data: <String, dynamic>{
-            "orderNum": orderNum,
-            "orderKind": kind,
-            "carrierName": carrierName,
-            "reporterName": reporterName.trim(),
-            "items": items.map((r) => r.toJson()).toList(),
-            "note": note.trim(),
-            "photoUrl": photoUrl,
-            "reportedAt": stamp(now),
-          },
-        );
-        if (outcome == EmailOutcome.suppressed) suppressed++;
-      }
+      final outcome = await gateway.sendEmail(
+        template: "order-adjustment",
+        idempotencyKey: "adjustment-$reportId",
+        data: <String, dynamic>{"reportId": reportId, "orderNum": orderNum},
+      );
+      if (outcome == EmailOutcome.suppressed) suppressed = 1;
     } on BackendException {
       return const AdjustmentResult.failed(AdjustmentFailure.email);
     }
 
-    if (rowLogged && suppressed < recipients.length) {
+    if (suppressed == 0) {
       try {
         await gateway.markAdjustmentEmailSent(reportId);
       } on BackendException {

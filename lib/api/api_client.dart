@@ -42,14 +42,20 @@ class ApiClient implements OrdersApi {
 
   String _bust(String path) => cacheBustedUrl(baseUrl, path, DateTime.now().millisecondsSinceEpoch);
 
-  /// Sales-order jobs for the token's truck. Never throws: returns [] on failure,
-  /// matching the reference behaviour so one bad truck cannot blank the calendar.
+  /// Sales-order jobs for the token's truck. Returns [] on a network/server failure
+  /// (reference behaviour: one bad truck cannot blank the calendar) BUT a 401/403
+  /// throws [UnauthorizedException] so an expired session is never shown as an
+  /// empty calendar.
   Future<List<Order>> fetchShipCalendarOrders(String token, {String? carrierName}) async {
     try {
       final res = await _dio.getUri<dynamic>(Uri.parse(_bust("/api/ship-calendar/orders")),
           options: Options(headers: _headers(token), responseType: ResponseType.json));
       final rows = _rows(res.data, "orders");
       return rows.map((j) => Order.fromShipCalendar(j, carrierName: carrierName)).toList();
+    } on DioException catch (e) {
+      final s = e.response?.statusCode;
+      if (s == 401 || s == 403) throw const UnauthorizedException();
+      return <Order>[];
     } catch (_) {
       return <Order>[];
     }

@@ -95,3 +95,21 @@ runtime as `process.env.CREWDLE_API_KEY` — never committed, never logged.
 3. **Railway code** for the exchange endpoint is not written.
 4. **Security:** the legacy React bundle exposes a middleware API key that needs
    rotating; it is not reused here.
+
+
+## Session, roles and what the client trusts (review fixes)
+
+- **Persistent session.** `lib/api/prefs_session_store.dart` (shared_preferences: localStorage on web) is wired in `main.dart`. It stores ONLY the access tokens, the display name, the **role** and the **session JWT** returned by the token exchange. It never stores a password or a carrier code. A refresh, a new tab and a deep link (`/#/calendar`) keep the session. Logout clears everything. The retired-account purge still runs on restore. If storage is blocked (private mode) the app falls back to an in-memory session.
+- **Route guard.** `/calendar` and `/my-orders` go through `AuthGuard`: no session, or an expired one, redirects to the login screen. Unknown paths show a NotFound screen (reference: pages/NotFound.tsx). There is one route table (`onGenerateRoute`), also used for the initial URL.
+- **Expired token.** A 401/403 from the job service is never shown as an empty calendar: `ApiClient.fetchShipCalendarOrders` and `shipOrders` throw `UnauthorizedException`; `ordersLoadProvider` clears the session and the login screen says "Session expirée".
+- **SuperUser comes from the server.** `Session.isSuperUser` is true only when the exchange response said `role: "superuser"` (`signInSuperUser` rejects any other response). It is a UI hint: hiding the admin screen is not a security control. Every privileged write must be enforced server-side from the signed session JWT (see output/server-contract.md).
+- **No client-chosen recipients.** The client sends ids only: `order-adjustment` gets `{reportId, orderNum}`; `receipt-uploaded` / `bol-uploaded` get `{receiptId, storagePath, kind}`. The server loads the row, computes recipients (group inbox; transfers to both stores; groupeql.com only; receipts to comptabilite@, BOL to sadm@) and sends. The session JWT travels in the `X-Quai-Session` header.
+
+### Known limitation: receipts bucket
+Receipt, BOL and change-report photos are uploaded to the `receipts` bucket and referenced by a **public URL** with an unguessable UUID path. They can contain personal data. Preferred end state: private bucket + short-lived signed URLs minted by the server when it builds the email. Until then the URL is the only protection.
+
+### 02:00 past-card rule (owner-mandated)
+Cards turn red (past) after **02:00 local time** (rolling working day, `lib/logic/order_windows.dart`), not at midnight. This was decided by the owner. The old React source has no explicit `setHours`: it compares plain dates (`shipDate < todayISO()`). **Future parity checks must not "fix" this**; keep the code and tests (`test/order_windows_test.dart`).
+
+### Styling notes (match the reference)
+Only the Login page is dark navy. `/admin` (sign-in) and `/unsubscribe` are light pages with a bordered card, exactly like the reference's Admin.tsx and Unsubscribe.tsx. The EN brand name "Lafantaisie Dock" is the reference's own `brand.name` (FR: "Quai Lafantaisie").

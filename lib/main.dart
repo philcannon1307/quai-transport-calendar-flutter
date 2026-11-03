@@ -2,6 +2,10 @@ import "package:flutter/material.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
 import "package:intl/date_symbol_data_local.dart";
 
+import "package:shared_preferences/shared_preferences.dart";
+
+import "api/prefs_session_store.dart";
+import "api/session.dart";
 import "app.dart";
 import "i18n/i18n.dart";
 import "pdf/pdf_ports.dart";
@@ -29,9 +33,20 @@ Future<void> main() async {
   // MaterialApp must mount once, with the URL route intact.
   final strings = await Strings.load(const Locale("fr"));
 
+  // Persistent session: a refresh / new tab / deep link keeps the user signed in.
+  // Only tokens and the role are stored, never credentials. If storage is blocked
+  // (private mode), fall back to an in-memory session rather than failing to boot.
+  SessionStore sessionStore;
+  try {
+    sessionStore = PrefsSessionStore(await SharedPreferences.getInstance());
+  } catch (_) {
+    sessionStore = MemorySessionStore();
+  }
+
   runApp(ProviderScope(
     overrides: <Override>[
       preloadedStringsProvider.overrideWithValue(strings),
+      sessionStoreProvider.overrideWithValue(sessionStore),
       // The PDF engine and print support are injected here so nothing else (and
       // no test) imports them.
       pdfTextExtractorProvider.overrideWithValue(const PdfrxTextExtractor()),

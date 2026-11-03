@@ -62,10 +62,10 @@ abstract class BackendGateway {
   Future<void> insertAdjustment(Map<String, dynamic> row);
   Future<void> markAdjustmentEmailSent(String id);
 
-  /// `recipient` is null for templates with a fixed recipient (receipt, BOL).
+  /// There is NO recipient parameter on purpose: the server computes recipients
+  /// from the verified sender and the report/receipt id (see server-contract.md).
   Future<EmailOutcome> sendEmail({
     required String template,
-    String? recipient,
     required String idempotencyKey,
     required Map<String, dynamic> data,
   });
@@ -128,7 +128,6 @@ class UnconfiguredBackend implements BackendGateway {
   @override
   Future<EmailOutcome> sendEmail({
     required String template,
-    String? recipient,
     required String idempotencyKey,
     required Map<String, dynamic> data,
   }) async =>

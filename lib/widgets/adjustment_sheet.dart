@@ -76,6 +76,8 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
         return bi(s, "Échec du téléversement de la photo. Réessayez.", "Photo upload failed. Please try again.");
       case AdjustmentFailure.badRecipient:
         return bi(s, "Aucun destinataire valide pour ce transporteur.", "No valid recipient for this carrier.");
+      case AdjustmentFailure.log:
+        return bi(s, "Le changement n'a pas pu être enregistré. Réessayez.", "The change could not be saved. Please try again.");
       case AdjustmentFailure.email:
         return bi(s, "Le courriel n'a pas pu être envoyé. Réessayez.", "The email could not be sent. Please try again.");
     }
