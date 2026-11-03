@@ -72,6 +72,7 @@ void main() {
       expect(r.isOk, isTrue);
       expect(b.adjustments.single["id"], "rep-1");
       expect(b.adjustments.single["order_kind"], "SO");
+      expect(b.adjustments.single["transfer_locations"], isNull, reason: "sales orders carry no store list");
       expect((b.adjustments.single["items"] as List), hasLength(1));
       expect(b.emails, hasLength(1));
       expect(b.emails.single.template, "order-adjustment");
@@ -97,6 +98,9 @@ void main() {
       expect(r.isOk, isTrue);
       expect(expected, hasLength(2), reason: "local validation still sees both stores");
       expect(b.emails, hasLength(1), reason: "one server call; the SERVER fans out to both stores");
+      expect(b.adjustments.single["transfer_locations"], locs,
+          reason: "the server reads the stores from the logged row");
+      expect(b.adjustments.single["order_kind"], "TO");
       expect(b.emails.single.data.containsKey("recipientEmail"), isFalse);
       expect(b.emails.single.data.containsKey("recipient"), isFalse);
     });
