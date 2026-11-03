@@ -15,36 +15,33 @@ class QuaiApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeProvider);
-    return FutureBuilder<Strings>(
-      future: ref.watch(stringsProvider.future),
-      builder: (context, snap) {
-        final strings = snap.data;
-        if (strings == null) {
-          return const MaterialApp(home: Scaffold(body: Center(child: CircularProgressIndicator())));
-        }
-        return StringsScope(
-          strings: strings,
-          child: MaterialApp(
-            title: "Quai Lafantaisie",
-            debugShowCheckedModeBanner: false,
-            theme: buildTheme(),
-            locale: locale,
-            supportedLocales: Strings.supported,
-            localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            // No initialRoute: Flutter Web then honours the browser URL, which
-            // makes /#/calendar reachable for review and deep links later.
-            routes: <String, WidgetBuilder>{
-              "/": (_) => const LoginScreen(),
-              "/calendar": (_) => const CalendarScreen(),
-              "/my-orders": (_) => const MyOrdersScreen(),
-            },
-          ),
-        );
-      },
+    // Never null and never a loading state: the dictionary is preloaded in
+    // main(), and while a locale switch is in flight we keep showing the
+    // previous one. This guarantees exactly ONE MaterialApp for the app's
+    // lifetime, so the Navigator keeps the route the URL asked for.
+    final asyncStrings = ref.watch(stringsProvider);
+    final Strings strings =
+        asyncStrings.hasValue ? asyncStrings.requireValue : ref.watch(preloadedStringsProvider);
+
+    return StringsScope(
+      strings: strings,
+      child: MaterialApp(
+        title: "Quai Lafantaisie",
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(),
+        locale: locale,
+        supportedLocales: Strings.supported,
+        localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        routes: <String, WidgetBuilder>{
+          "/": (_) => const LoginScreen(),
+          "/calendar": (_) => const CalendarScreen(),
+          "/my-orders": (_) => const MyOrdersScreen(),
+        },
+      ),
     );
   }
 }

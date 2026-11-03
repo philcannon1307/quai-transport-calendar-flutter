@@ -54,6 +54,33 @@ class Order {
 
   bool get isTransfer => kind == OrderKind.transfer;
 
+  /// Same card, tagged with the calendar it belongs to.
+  Order withCarrierName(String? name) => Order(
+        kind: kind,
+        soNum: soNum,
+        date: date,
+        soId: soId,
+        customer: customer,
+        serviceTypeId: serviceTypeId,
+        serviceType: serviceType,
+        status: status,
+        eventStatus: eventStatus,
+        shipDate: shipDate,
+        city: city,
+        state: state,
+        shippingLocationId: shippingLocationId,
+        shippingLocationName: shippingLocationName,
+        saleLocationId: saleLocationId,
+        saleLocationName: saleLocationName,
+        eventStartDate: eventStartDate,
+        truckId: truckId,
+        truckName: truckName,
+        serviceEventId: serviceEventId,
+        serviceEventName: serviceEventName,
+        memo: memo,
+        carrierName: name,
+      );
+
   static String? _s(dynamic v) => v == null ? null : v.toString();
   static int? _i(dynamic v) => v is int ? v : (v is num ? v.toInt() : int.tryParse(v?.toString() ?? ""));
 

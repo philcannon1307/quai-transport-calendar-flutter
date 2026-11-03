@@ -15,6 +15,15 @@ dependencies:
   flutter_riverpod: ^2.5.1
   go_router: ^14.2.7
   dio: ^5.7.0
+  # Picking-ticket viewer, PDF text (contact extraction), print/download, tel:/Maps links.
+  # PINNED TO 1.x ON PURPOSE. pdfrx 2.x depends on pdfium_dart, whose native-assets
+  # build hook compiles C code during `flutter test`; the platform build host has no
+  # C compiler ("No compiler configured on host linux_x64") so the gate fails before
+  # a single test runs. 1.x has no build hooks (pdfium is fetched/bundled at app
+  # build, WASM on web). Do not raise this to ^2 without a compiler on the host.
+  pdfrx: ^1.3.5
+  printing: any
+  url_launcher: any
 
 dev_dependencies:
   flutter_test:

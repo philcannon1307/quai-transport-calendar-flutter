@@ -1,0 +1,14 @@
+# Flutter / Dart build output
+.dart_tool/
+.packages
+build/
+dist/
+node_modules/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock.bak
+# local secrets: never commit
+.env
+.env.*
+*.key
+*.pem

@@ -42,7 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final Carrier? carrier = carrierByDisplayName(name);
       if (carrier == null) throw Exception("unknown carrier");
       final res = await ref.read(authServiceProvider).signIn(carrier: carrier, code: _code.text.trim());
-      ref.read(sessionStoreProvider).write(kTokenKeyAlias, res.primaryToken);
+      ref.read(sessionProvider).signIn(token: res.primaryToken, name: name, linkedTokens: res.linkedTokens);
       ref.read(currentCarrierProvider.notifier).state = name;
       if (mounted) Navigator.of(context).pushReplacementNamed("/calendar");
     } catch (e) {

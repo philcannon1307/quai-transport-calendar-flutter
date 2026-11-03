@@ -8,6 +8,10 @@ import "../logic/order_windows.dart";
 import "../models/order.dart";
 import "../state/providers.dart";
 import "../theme.dart";
+import "../data/carriers.dart";
+import "../widgets/contact_links.dart";
+import "../widgets/logistique_tabs.dart";
+import "ticket_sheet.dart";
 
 class CalendarScreen extends ConsumerWidget {
   const CalendarScreen({super.key});
@@ -18,6 +22,9 @@ class CalendarScreen extends ConsumerWidget {
     final span = ref.watch(spanDaysProvider);
     final asyncOrders = ref.watch(ordersProvider);
     final now = DateTime.now();
+    final isLogistique = ref.watch(currentCarrierProvider) == kLogistique;
+    final view = ref.watch(logistiqueViewProvider);
+    final load = ref.watch(ordersLoadProvider).valueOrNull;
 
     return Scaffold(
       appBar: AppBar(
@@ -51,7 +58,33 @@ class CalendarScreen extends ConsumerWidget {
             child: asyncOrders.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => _Message(text: e.toString()),
-              data: (orders) => _DayStack(days: OrderWindows.days(now, span), orders: orders, now: now, strings: s),
+              data: (orders) {
+                final shown = isLogistique ? orders.where((o) => calendarView(o) == view).toList() : orders;
+                final failed = load?.failedTrucks ?? const <String>[];
+                return Column(
+                  children: <Widget>[
+                    if (isLogistique)
+                      LogistiqueTabs(
+                        selected: view,
+                        orders: orders,
+                        onChanged: (v) => ref.read(logistiqueViewProvider.notifier).state = v,
+                      ),
+                    if (load?.unauthorized ?? false)
+                      const _Banner(text: "Session expirée — reconnectez-vous. / Session expired — sign in again."),
+                    if (isLogistique && view == CalendarViewKind.pickups && (load?.middlewareUnavailable ?? false))
+                      const _Banner(
+                        text: "Ramassages indisponibles : la connexion à l'intergiciel n'est pas configurée. / "
+                            "Pick-ups unavailable: the middleware connection is not configured.",
+                      ),
+                    if (failed.isNotEmpty)
+                      _Banner(
+                        text: "Certains camions n'ont pas pu être chargés : ${failed.join(", ")} / "
+                            "Some trucks could not be loaded: ${failed.join(", ")}",
+                      ),
+                    Expanded(child: _DayStack(days: OrderWindows.days(now, span), orders: shown, now: now, strings: s)),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -133,7 +166,11 @@ class _OrderCard extends StatelessWidget {
       ),
       // IntrinsicHeight: lets the accent stripe match the card's height without
       // CrossAxisAlignment.stretch, which has no bounded height here.
-      child: IntrinsicHeight(
+      child: InkWell(
+        key: Key("card-${order.soNum}"),
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showTicketSheet(context, order.soNum),
+        child: IntrinsicHeight(
         child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -159,6 +196,8 @@ class _OrderCard extends StatelessWidget {
                     Padding(padding: const EdgeInsets.only(top: 2), child: Text(order.customer!, style: const TextStyle(fontSize: 13))),
                   if ((order.serviceType ?? "").isNotEmpty)
                     Padding(padding: const EdgeInsets.only(top: 2), child: Text(order.serviceType!, style: const TextStyle(fontSize: 11, color: Colors.black54))),
+                  if (!order.isTransfer)
+                    Padding(padding: const EdgeInsets.only(top: 6), child: ContactLinks(soNum: order.soNum)),
                 ],
               ),
             ),
@@ -166,8 +205,27 @@ class _OrderCard extends StatelessWidget {
         ],
       ),
       ),
+      ),
     );
   }
+}
+
+class _Banner extends StatelessWidget {
+  const _Banner({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF4E5),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFF5C27A)),
+        ),
+        child: Text(text, style: const TextStyle(fontSize: 12)),
+      );
 }
 
 class _Message extends StatelessWidget {

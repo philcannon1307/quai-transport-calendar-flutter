@@ -41,6 +41,28 @@ guards rather than decoration:
   with no bounded height inside the day `ListView`, corrupting parent data during
   layout. It crashed on the first order card. Fixed with `IntrinsicHeight`.
 
+## Picking tickets, contacts, InterQL, Logistique
+
+| Area | Where | Rule ported |
+| --- | --- | --- |
+| Ticket viewer | `screens/ticket_sheet.dart`, `api/ticket_service.dart` | progress that eases to 70% while NetSuite builds the PDF; 10-min cache; print / download; big red **Fermer / Close**; owning-truck token only; a 404 is retried once; 401/403 = stale session |
+| Contact links | `logic/contact_parser.dart`, `api/contact_service.dart`, `widgets/contact_links.dart` | ship-to phone + address parsed from the PDF text (template 146); max 2 PDFs processed at once; result cached; Call + Directions buttons |
+| InterQL (trucks 3+4) | `api/orders_repository.dart` | one login covers both trucks; separate events on one SO are kept (dedupe by event, never by SO); each TO remembers the token of the Gooseneck truck that owns it |
+| SADM - Logistique | `orders_repository.dart`, `widgets/logistique_tabs.dart` | 3 tabs with counts; loads only the two Gooseneck trucks; pick-ups from the Ste-Agathe middleware; parallel-token picking lists on a 404 |
+
+**PDF engine isolation.** `pdfrx` and `printing` are imported by exactly one file,
+`lib/pdf/pdfrx_impl.dart`, which only `main.dart` imports and injects through providers.
+No test and no other file loads a PDF engine.
+
+**Middleware (pick-ups).** The reference app shipped the middleware `x-api-key` in the
+web bundle. This port never holds it: it calls a server-side proxy at
+`QUAI_MIDDLEWARE_PROXY_URL` (proposed contract in `api/middleware_source.dart`). Until that
+proxy exists the Pick-ups tab says so instead of showing an empty list.
+
+**Do not upgrade `pdfrx` to 2.x.** It pulls `pdfium_dart`, whose native-assets hook needs
+a C compiler during `flutter test`. The platform build host has none, so the test gate fails
+with "No compiler configured on host 'linux_x64'". `pdfrx` is pinned to `^1.3.5`.
+
 ## URL strategy — do not "fix" this
 
 `main.dart` keeps Flutter's **default hash strategy** (`/#/calendar`).
@@ -56,6 +78,11 @@ deploy time. The Crewdle API key is bound by the platform at deploy and read at
 runtime as `process.env.CREWDLE_API_KEY` — never committed, never logged.
 
 ## Pending — NOT delivered
+
+0. **Middleware proxy** (`QUAI_MIDDLEWARE_PROXY_URL`) for Logistique pick-ups — not built.
+   **PDF rendering, text extraction, print and download are untested in a real browser**
+   (they need a signed-in session to fetch a real ticket); only their surrounding behaviour
+   is covered by tests.
 
 1. **Server-side token exchange is missing.** `authServiceProvider` returns
    `UnimplementedAuthService` until `QUAI_EXCHANGE_URL` is supplied, so **sign-in

@@ -1,6 +1,8 @@
 import "package:dio/dio.dart";
 import "package:flutter/foundation.dart" show visibleForTesting;
 import "../models/order.dart";
+import "orders_api.dart";
+import "ticket_service.dart";
 
 /// Quai backend API client.
 ///
@@ -8,7 +10,7 @@ import "../models/order.dart";
 ///  - Bearer token per truck
 ///  - cache: no-store AND a ?_=<timestamp> cache-buster on every read
 ///  - picking ticket works only with the OWNING truck's token; a 404 is retried once
-class ApiClient {
+class ApiClient implements OrdersApi {
   ApiClient({Dio? dio, this.baseUrl = kJobServiceBaseUrl})
       : _dio = dio ??
             Dio(BaseOptions(
@@ -102,6 +104,54 @@ class ApiClient {
       }
     }
     return null;
+  }
+
+  @override
+  Future<List<Order>> shipOrders(String token, {String? carrierName}) async {
+    try {
+      final res = await _dio.getUri<dynamic>(Uri.parse(_bust("/api/ship-calendar/orders")),
+          options: Options(headers: _headers(token), responseType: ResponseType.json));
+      return _rows(res.data, "orders").map((j) => Order.fromShipCalendar(j, carrierName: carrierName)).toList();
+    } on DioException catch (e) {
+      final s = e.response?.statusCode;
+      if (s == 401 || s == 403) throw const UnauthorizedException();
+      throw OrdersFetchException(s);
+    }
+  }
+
+  @override
+  Future<List<Order>> transferOrders(String token, {String? carrierName}) =>
+      fetchTransferOrders(token, carrierName: carrierName);
+
+  /// One raw picking-ticket request: no retry, no fallback (TicketService owns
+  /// those rules). A null token sends no Authorization header, as in the reference.
+  Future<TicketHttpResult> fetchTicketRaw(
+    String? token,
+    String ticketNum, {
+    void Function(double? fraction)? onDownload,
+  }) async {
+    final encoded = Uri.encodeComponent(ticketNum);
+    final path = isTransferNum(ticketNum)
+        ? "/api/transfer-calendar/picking-ticket/$encoded"
+        : "/api/ship-calendar/picking-ticket/$encoded";
+    try {
+      final res = await _dio.getUri<List<int>>(
+        Uri.parse(_bust(path)),
+        options: Options(
+          headers: token == null
+              ? <String, String>{"Cache-Control": "no-store", "Pragma": "no-cache"}
+              : _headers(token),
+          responseType: ResponseType.bytes,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+        onReceiveProgress: onDownload == null
+            ? null
+            : (received, total) => onDownload(total > 0 ? received / total : null),
+      );
+      return TicketHttpResult(res.statusCode ?? 0, res.data);
+    } on DioException catch (e) {
+      return TicketHttpResult(e.response?.statusCode ?? 0);
+    }
   }
 
   static List<Map<String, dynamic>> _rows(dynamic data, String key) {
