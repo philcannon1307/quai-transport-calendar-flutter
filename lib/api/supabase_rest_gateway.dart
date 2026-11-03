@@ -5,16 +5,16 @@ import "package:dio/dio.dart";
 import "../logic/announcements.dart";
 import "backend_gateway.dart";
 
-/// Supabase over plain HTTP (PostgREST, Storage, Edge Functions) using dio —
-/// no SDK, so no extra native or plugin dependencies.
+/// Supabase over plain HTTP using dio — no SDK, so no extra native or plugin dependencies.
 ///
-/// SECURITY NOTE: [anonKey] is Supabase's PUBLISHABLE key. Its power is whatever
-/// the row-level-security policies grant, and in the reference project those
-/// policies let ANYONE insert/update/delete announcements, order photos and
-/// delivery history ("Anyone can ..." policies). Until they are tightened (or
-/// these writes move behind a server-side function), the key is effectively a
-/// write credential for those tables. The app therefore never ships it by
-/// default: it must be supplied at build time.
+/// WHO MAY DO WHAT. The public (anon) key in [anonKey] can only READ the announcements: the
+/// database is locked so that it grants no write at all (supabase-lockdown.sql). Every write, file
+/// upload, private read and email goes through two edge functions that check the exchange
+/// server's session token (sent as X-Quai-Session) and then act with the service role:
+///   * quai-data                 announcements, files, receipts, change reports, delivery history
+///   * send-transactional-email  emails (recipients are computed there, never by this client)
+/// The Authorization bearer is always the public key, which Supabase's gateway accepts; the
+/// session token is never sent anywhere else.
 class SupabaseRestGateway implements BackendGateway {
   SupabaseRestGateway({required String baseUrl, required this.anonKey, this.sessionToken, Dio? dio})
       : baseUrl = baseUrl.replaceAll(RegExp(r"/+$"), ""),
@@ -28,32 +28,29 @@ class SupabaseRestGateway implements BackendGateway {
   final String baseUrl;
   final String anonKey;
 
-  /// Returns the exchange-issued session JWT; sent as the Authorization bearer on every
-  /// authenticated call (and as X-Quai-Session on edge-function calls).
+  /// Returns the exchange-issued session JWT (null when signed out).
   final String? Function()? sessionToken;
   final Dio _dio;
 
   @override
   bool get configured => baseUrl.isNotEmpty && anonKey.isNotEmpty;
 
-  /// Headers for an authenticated call. The public key identifies the project (apikey);
-  /// the Authorization bearer is the exchange-issued session JWT when somebody is signed
-  /// in, so Postgres RLS / Storage see the carrier (role + carrier claims) instead of "anon".
-  /// Signed out, it falls back to the public key (read-only announcements).
-  Map<String, String> _headers([Map<String, String>? extra]) {
-    final jwt = sessionToken?.call();
-    final bearer = (jwt != null && jwt.isNotEmpty) ? jwt : anonKey;
-    return <String, String>{
-      "apikey": anonKey,
-      "Authorization": "Bearer " + bearer,
-      ...?extra,
-    };
-  }
+  /// Public headers: identify the project; read-only power.
+  Map<String, String> _publicHeaders([Map<String, String>? extra]) => <String, String>{
+        "apikey": anonKey,
+        "Authorization": "Bearer " + anonKey,
+        ...?extra,
+      };
 
+  String _session() {
+    final jwt = sessionToken?.call();
+    if (jwt == null || jwt.isEmpty) throw const BackendException(401, "not_signed_in");
+    return jwt;
+  }
 
   static String _message(dynamic data) {
     if (data is Map) {
-      final m = data["message"] ?? data["error"] ?? data["msg"] ?? data["hint"];
+      final m = data["error"] ?? data["message"] ?? data["msg"] ?? data["hint"];
       if (m != null) return m.toString();
     }
     return data?.toString() ?? "";
@@ -67,12 +64,6 @@ class SupabaseRestGateway implements BackendGateway {
     Map<String, String>? headers,
     bool auth = true,
   }) async {
-    // Edge functions also accept the session as X-Quai-Session (kept for the email call
-    // only: a custom header on every REST call would force a CORS pre-flight for nothing).
-    final jwt = sessionToken?.call();
-    if (jwt != null && jwt.isNotEmpty && url.contains("/functions/v1/")) {
-      headers = <String, String>{...?headers, "X-Quai-Session": jwt};
-    }
     try {
       final res = await _dio.request<dynamic>(
         url,
@@ -80,7 +71,7 @@ class SupabaseRestGateway implements BackendGateway {
         queryParameters: query,
         options: Options(
           method: method,
-          headers: auth ? _headers(headers) : <String, String>{"apikey": anonKey, ...?headers},
+          headers: auth ? _publicHeaders(headers) : <String, String>{"apikey": anonKey, ...?headers},
           responseType: ResponseType.json,
           validateStatus: (_) => true,
         ),
@@ -93,10 +84,17 @@ class SupabaseRestGateway implements BackendGateway {
     }
   }
 
-  static const Map<String, String> _jsonReturn = <String, String>{
-    "Content-Type": "application/json",
-    "Prefer": "return=representation",
-  };
+  /// One call to the quai-data function: `{op, ...args}` -> the JSON answer.
+  Future<Map<String, dynamic>> _op(String op, [Map<String, dynamic> args = const <String, dynamic>{}]) async {
+    final res = await _send(
+      "POST",
+      "$baseUrl/functions/v1/quai-data",
+      data: <String, dynamic>{"op": op, ...args},
+      headers: <String, String>{"Content-Type": "application/json", "X-Quai-Session": _session()},
+    );
+    final d = res.data;
+    return d is Map ? d.cast<String, dynamic>() : <String, dynamic>{};
+  }
 
   String _rest(String table) => "$baseUrl/rest/v1/$table";
 
@@ -105,6 +103,7 @@ class SupabaseRestGateway implements BackendGateway {
 
   // --- announcements ---------------------------------------------------------
 
+  /// Public read: the lockdown leaves exactly this (active announcements and their photos).
   @override
   Future<List<Announcement>> activeAnnouncements() async {
     final posts = _rows((await _send("GET", _rest("announcements"), query: <String, dynamic>{
@@ -131,41 +130,29 @@ class SupabaseRestGateway implements BackendGateway {
 
   @override
   Future<String> insertAnnouncement(Map<String, String> row) async {
-    final res = await _send("POST", _rest("announcements"), data: row, headers: _jsonReturn);
-    final rows = _rows(res.data);
-    if (rows.isEmpty) throw const BackendException(0, "announcement was not created");
-    return rows.first["id"].toString();
+    final id = (await _op("announcement.insert", <String, dynamic>{"row": row}))["id"];
+    if (id == null) throw const BackendException(0, "announcement was not created");
+    return id.toString();
   }
 
   @override
   Future<void> updateAnnouncement(String id, Map<String, String> row) async {
-    await _send(
-      "PATCH",
-      _rest("announcements"),
-      query: <String, dynamic>{"id": "eq.$id"},
-      data: <String, dynamic>{...row, "updated_at": DateTime.now().toUtc().toIso8601String()},
-      headers: const <String, String>{"Content-Type": "application/json"},
-    );
+    await _op("announcement.update", <String, dynamic>{"id": id, "row": row});
   }
 
   @override
   Future<void> deleteAnnouncement(String id) async {
-    await _send("DELETE", _rest("announcements"), query: <String, dynamic>{"id": "eq.$id"});
+    await _op("announcement.delete", <String, dynamic>{"id": id});
   }
 
   @override
   Future<void> insertAnnouncementImage(String announcementId, String url) async {
-    await _send(
-      "POST",
-      _rest("announcement_images"),
-      data: <String, String>{"announcement_id": announcementId, "storage_url": url},
-      headers: const <String, String>{"Content-Type": "application/json"},
-    );
+    await _op("announcement.image.add", <String, dynamic>{"announcementId": announcementId, "url": url});
   }
 
   @override
   Future<void> deleteAnnouncementImageByUrl(String url) async {
-    await _send("DELETE", _rest("announcement_images"), query: <String, dynamic>{"storage_url": "eq.$url"});
+    await _op("announcement.image.remove", <String, dynamic>{"url": url});
   }
 
   // --- storage ---------------------------------------------------------------
@@ -175,6 +162,8 @@ class SupabaseRestGateway implements BackendGateway {
   @override
   String publicUrl(String bucket, String path) => "$baseUrl/storage/v1/object/public/$bucket/${_encodePath(path)}";
 
+  /// The bytes go to the function (which checks who you are, the folder, the picture type and
+  /// size) and it stores them; no direct storage access exists for the public key.
   @override
   Future<String> uploadFile({
     required String bucket,
@@ -184,12 +173,13 @@ class SupabaseRestGateway implements BackendGateway {
   }) async {
     await _send(
       "POST",
-      "$baseUrl/storage/v1/object/$bucket/${_encodePath(path)}",
+      "$baseUrl/functions/v1/quai-data",
+      query: <String, dynamic>{"op": "upload", "bucket": bucket, "path": path},
       data: Stream<List<int>>.value(bytes),
       headers: <String, String>{
         "Content-Type": contentType,
         Headers.contentLengthHeader: bytes.length.toString(),
-        "x-upsert": "false",
+        "X-Quai-Session": _session(),
       },
     );
     return publicUrl(bucket, path);
@@ -198,48 +188,27 @@ class SupabaseRestGateway implements BackendGateway {
   @override
   Future<void> removeFiles(String bucket, List<String> paths) async {
     if (paths.isEmpty) return;
-    await _send(
-      "DELETE",
-      "$baseUrl/storage/v1/object/$bucket",
-      data: <String, dynamic>{"prefixes": paths},
-      headers: const <String, String>{"Content-Type": "application/json"},
-    );
+    await _op("files.remove", <String, dynamic>{"bucket": bucket, "paths": paths});
   }
 
   // --- receipts and change reports ------------------------------------------------
+  // carrier_name and email_sent in these rows are ignored by the server: it uses the signed-in
+  // carrier from the session token and marks rows as emailed itself.
 
   @override
-  Future<String?> insertReceipt(Map<String, dynamic> row) async {
-    final res = await _send("POST", _rest("receipts"), data: row, headers: _jsonReturn);
-    final rows = _rows(res.data);
-    return rows.isEmpty ? null : rows.first["id"]?.toString();
-  }
+  Future<String?> insertReceipt(Map<String, dynamic> row) async =>
+      (await _op("receipt.insert", <String, dynamic>{"row": row}))["id"]?.toString();
 
   @override
-  Future<void> markReceiptEmailSent(String id) => _markSent("receipts", id);
+  Future<void> markReceiptEmailSent(String id) async {} // done by send-transactional-email
 
   @override
   Future<void> insertAdjustment(Map<String, dynamic> row) async {
-    await _send(
-      "POST",
-      _rest("order_adjustments"),
-      data: row,
-      headers: const <String, String>{"Content-Type": "application/json", "Prefer": "return=minimal"},
-    );
+    await _op("adjustment.insert", <String, dynamic>{"row": row});
   }
 
   @override
-  Future<void> markAdjustmentEmailSent(String id) => _markSent("order_adjustments", id);
-
-  Future<void> _markSent(String table, String id) async {
-    await _send(
-      "PATCH",
-      _rest(table),
-      query: <String, dynamic>{"id": "eq.$id"},
-      data: const <String, dynamic>{"email_sent": true},
-      headers: const <String, String>{"Content-Type": "application/json", "Prefer": "return=minimal"},
-    );
-  }
+  Future<void> markAdjustmentEmailSent(String id) async {} // done by send-transactional-email
 
   @override
   Future<EmailOutcome> sendEmail({
@@ -255,7 +224,7 @@ class SupabaseRestGateway implements BackendGateway {
         "idempotencyKey": idempotencyKey,
         "templateData": data,
       },
-      headers: const <String, String>{"Content-Type": "application/json"},
+      headers: <String, String>{"Content-Type": "application/json", "X-Quai-Session": _session()},
     );
     final body = res.data;
     if (body is Map && body["success"] == false && body["reason"] == "email_suppressed") {
@@ -269,14 +238,7 @@ class SupabaseRestGateway implements BackendGateway {
   @override
   Future<void> upsertHistory(List<Map<String, dynamic>> rows) async {
     if (rows.isEmpty) return;
-    // Server-side function (security definer): a job reassigned to another truck is handled
-    // row by row, where a direct upsert would reject the whole batch under RLS.
-    await _send(
-      "POST",
-      "$baseUrl/rest/v1/rpc/upsert_delivery_history",
-      data: <String, dynamic>{"rows": rows},
-      headers: const <String, String>{"Content-Type": "application/json"},
-    );
+    await _op("history.upsert", <String, dynamic>{"rows": rows});
   }
 
   @override
@@ -286,18 +248,13 @@ class SupabaseRestGateway implements BackendGateway {
     List<String>? carrierNames,
     List<int>? carrierIds,
   }) async {
-    final query = <String, dynamic>{
-      "select": "*",
-      "and": "(ship_date.gte.$from,ship_date.lt.$to)",
-      "order": "ship_date.desc",
-      "limit": "2000",
-    };
-    if (carrierIds != null && carrierIds.isNotEmpty) {
-      query["carrier_id"] = "in.(${carrierIds.join(",")})";
-    } else if (carrierNames != null && carrierNames.isNotEmpty) {
-      query["carrier_name"] = "in.(${carrierNames.map((n) => '"${n.replaceAll('"', "")}"').join(",")})";
-    }
-    return _rows((await _send("GET", _rest("delivery_history"), query: query)).data);
+    final res = await _op("history.list", <String, dynamic>{
+      "from": from,
+      "to": to,
+      if (carrierNames != null && carrierNames.isNotEmpty) "carrierNames": carrierNames,
+      if (carrierIds != null && carrierIds.isNotEmpty) "carrierIds": carrierIds,
+    });
+    return _rows(res["rows"]);
   }
 
   // --- unsubscribe --------------------------------------------------------------
