@@ -74,6 +74,8 @@ void main() {
       await tester.pumpWidget(_app());
       await tester.pump();
       await _push(tester, "/calendar");
+      // The old route is removed only after the push transition finishes.
+      await tester.pump(const Duration(seconds: 1));
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(find.byType(CalendarScreen), findsNothing);
     });
@@ -82,6 +84,8 @@ void main() {
       await tester.pumpWidget(_app());
       await tester.pump();
       await _push(tester, "/my-orders");
+      // The old route is removed only after the push transition finishes.
+      await tester.pump(const Duration(seconds: 1));
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(find.byType(MyOrdersScreen), findsNothing);
     });
@@ -112,6 +116,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
+      // The old route is removed only after the push transition finishes.
+      await tester.pump(const Duration(seconds: 1));
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(find.byType(CalendarScreen), findsNothing);
     });
@@ -126,6 +132,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pump(const Duration(milliseconds: 100));
+      // The old route is removed only after the push transition finishes.
+      await tester.pump(const Duration(seconds: 1));
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(find.byKey(const Key("session-expired")), findsOneWidget);
     });
