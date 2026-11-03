@@ -1,0 +1,15 @@
+{
+  "name": "quai-token-exchange",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Token-exchange service for the Quai Lafantaisie transport calendar (Flutter). Zero runtime dependencies.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
+    "hash-password": "node scripts/hash-password.js"
+  }
+}
