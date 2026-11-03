@@ -35,6 +35,7 @@ test("InterQL: primary RIDEAU (truck 3) + linked OPEN GOOSENECK (truck 4), nothi
     assert.deepEqual(r.json.linkedTokens, { "OPEN GOOSENECK": "job-token:OPEN GOOSENECK" });
     assert.equal(r.json.role, "carrier");
     assert.deepEqual(verifySession(r.json.sessionToken, SECRET).trucks, ["3", "4"]);
+    assert.deepEqual(verifySession(r.json.sessionToken, SECRET).names.sort(), ["InterQL", "OPEN GOOSENECK", "RIDEAU GOOSENECK"]);
     assert.deepEqual(stub.calls.map((c) => c.username).sort(), ["OPEN GOOSENECK", "RIDEAU GOOSENECK"]);
   } finally { await app.close(); await stub.close(); }
 });

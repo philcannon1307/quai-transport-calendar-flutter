@@ -13,11 +13,11 @@ function sign(data, secret) {
 }
 
 /**
- * claims: { sub, appRole, trucks, ttlSeconds }
+ * claims: { sub, appRole, trucks, names }
  * "role" is the Postgres role Supabase expects ("authenticated"); the application
  * role (carrier | logistique | superuser) is "app_role".
  */
-export function signSession({ sub, appRole, trucks }, secret, ttlSeconds, nowMs = Date.now()) {
+export function signSession({ sub, appRole, trucks, names = [] }, secret, ttlSeconds, nowMs = Date.now()) {
   const iat = Math.floor(nowMs / 1000);
   const exp = iat + ttlSeconds;
   const payload = {
@@ -27,6 +27,7 @@ export function signSession({ sub, appRole, trucks }, secret, ttlSeconds, nowMs 
     sub,
     app_role: appRole,
     trucks,
+    names, // every name this login's rows may carry (delivery_history.carrier_name)
     iat,
     exp,
     jti: randomUUID(),

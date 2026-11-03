@@ -46,8 +46,8 @@ export function createExchange({ config, jobs, limiters, log }) {
   const invalid = () => ({ status: 401, body: { error: "invalid_credentials" } });
   const upstream = () => ({ status: 502, body: { error: "upstream_unavailable" } });
 
-  function issue({ sub, appRole, trucks, primaryToken, linkedTokens, extra = {} }) {
-    const { token, exp } = signSession({ sub, appRole, trucks }, config.sessionSecret, config.sessionTtlSeconds);
+  function issue({ sub, appRole, trucks, names = [], primaryToken, linkedTokens, extra = {} }) {
+    const { token, exp } = signSession({ sub, appRole, trucks, names }, config.sessionSecret, config.sessionTtlSeconds);
     return {
       status: 200,
       body: { accessToken: primaryToken, linkedTokens, role: appRole, sessionToken: token, exp, ...extra },
@@ -101,6 +101,8 @@ export function createExchange({ config, jobs, limiters, log }) {
       sub: carrier.displayName,
       appRole,
       trucks: [carrier.truck, ...linked.map((t) => t.truck)],
+      // Same list the app filters delivery_history by (Dart historyCarrierNames).
+      names: [...new Set([carrier.displayName, primaryUser, ...(carrier.linkedTrucks ?? []).map((t) => t.displayName)])],
       primaryToken: tokens[0],
       linkedTokens,
     });
