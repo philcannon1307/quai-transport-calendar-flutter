@@ -1,0 +1,70 @@
+import "../models/carrier.dart";
+
+/// Result of a sign-in: one access token per truck the login covers.
+class AuthResult {
+  const AuthResult({required this.primaryToken, this.linkedTokens = const <String, String>{}});
+  final String primaryToken;
+  /// backend username -> access token
+  final Map<String, String> linkedTokens;
+}
+
+class AuthFailure implements Exception {
+  AuthFailure(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// Sign-in contract.
+///
+/// SECURITY: the reference app shipped every carrier password in the client
+/// bundle (src/lib/carriers.ts) plus a middleware API key (src/lib/api.ts).
+/// This port ships NEITHER. The server holds the credential table, calls
+/// POST /api/auth/mvp-login itself, and returns only the resulting tokens.
+abstract class AuthService {
+  Future<AuthResult> signIn({required Carrier carrier, required String code});
+}
+
+/// Calls the server-side token exchange. Endpoint is injected, never a secret.
+class TokenExchangeAuthService implements AuthService {
+  TokenExchangeAuthService({required this.exchangeUrl, required this.post});
+
+  final String exchangeUrl;
+  /// Injected transport so this stays unit-testable: body -> decoded JSON.
+  final Future<Map<String, dynamic>> Function(String url, Map<String, dynamic> body) post;
+
+  @override
+  Future<AuthResult> signIn({required Carrier carrier, required String code}) async {
+    if (exchangeUrl.isEmpty) {
+      throw AuthFailure("NOT_CONFIGURED: server-side token exchange endpoint is not set.");
+    }
+    final json = await post(exchangeUrl, <String, dynamic>{
+      "carrier": carrier.displayName,
+      "code": code,
+    });
+    final token = json["accessToken"];
+    if (token is! String || token.isEmpty) throw AuthFailure("Invalid response from token exchange.");
+    final linked = <String, String>{};
+    final rawLinked = json["linkedTokens"];
+    if (rawLinked is Map) {
+      rawLinked.forEach((k, v) {
+        if (v is String) linked[k.toString()] = v;
+      });
+    }
+    return AuthResult(primaryToken: token, linkedTokens: linked);
+  }
+}
+
+/// Placeholder used until the Railway-side exchange exists.
+///
+/// It deliberately FAILS LOUDLY instead of faking a signed-in session, so a
+/// missing backend can never be mistaken for a working login.
+class UnimplementedAuthService implements AuthService {
+  @override
+  Future<AuthResult> signIn({required Carrier carrier, required String code}) async {
+    throw AuthFailure(
+      "PENDING_BACKEND: the server-side token exchange is not deployed yet. "
+      "The Railway job service credentials must move server-side before sign-in can work.",
+    );
+  }
+}
