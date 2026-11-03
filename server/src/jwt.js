@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual, randomUUID } from "node:crypto";
 
 // HS256 session JWT. Signed with SESSION_JWT_SECRET. Set that to the Supabase project's
 // JWT secret and Supabase RLS can read the claims with auth.jwt() ->> 'app_role'.
@@ -8,23 +8,40 @@ const HEADER = b64u(JSON.stringify({ alg: "HS256", typ: "JWT" }));
 export const ISSUER = "quai-exchange";
 export const AUDIENCE = "authenticated";
 
+// Fixed namespace for carrier subjects. Never change it: ids stored by Storage (owner) derive from it.
+export const SUBJECT_NAMESPACE = "6f1d0c52-8a3e-4b7a-9d41-2c7e0b9a4f10";
+
+/** RFC 4122 UUID v5 (SHA-1) of name in namespace. */
+export function uuidV5(name, namespace = SUBJECT_NAMESPACE) {
+  const ns = Buffer.from(namespace.replace(/-/g, ""), "hex");
+  const h = createHash("sha1").update(ns).update(Buffer.from(String(name), "utf8")).digest().subarray(0, 16);
+  h[6] = (h[6] & 0x0f) | 0x50;
+  h[8] = (h[8] & 0x3f) | 0x80;
+  const x = h.toString("hex");
+  return x.slice(0, 8) + "-" + x.slice(8, 12) + "-" + x.slice(12, 16) + "-" + x.slice(16, 20) + "-" + x.slice(20);
+}
+export const subjectFor = (carrier) => uuidV5(String(carrier).trim().toLowerCase());
+
 function sign(data, secret) {
   return createHmac("sha256", secret).update(data).digest();
 }
 
 /**
- * claims: { sub, appRole, trucks, names }
+ * claims: { carrier, appRole, trucks, names }
+ * "sub" is a deterministic UUID (v5 of the carrier name) so Supabase Storage / auth.uid() never choke
+ * on a non-UUID subject; the readable carrier name travels in the separate "carrier" claim.
  * "role" is the Postgres role Supabase expects ("authenticated"); the application
  * role (carrier | logistique | superuser) is "app_role".
  */
-export function signSession({ sub, appRole, trucks, names = [] }, secret, ttlSeconds, nowMs = Date.now()) {
+export function signSession({ carrier, appRole, trucks, names = [] }, secret, ttlSeconds, nowMs = Date.now()) {
   const iat = Math.floor(nowMs / 1000);
   const exp = iat + ttlSeconds;
   const payload = {
     iss: ISSUER,
     aud: AUDIENCE,
     role: "authenticated",
-    sub,
+    sub: subjectFor(carrier),
+    carrier,
     app_role: appRole,
     trucks,
     names, // every name this login's rows may carry (delivery_history.carrier_name)

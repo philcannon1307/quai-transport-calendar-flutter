@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { startApp, startStub, STUB_ACCOUNTS, ORIGIN, SECRET } from "./helpers.js";
-import { verifySession } from "../src/jwt.js";
+import { verifySession, subjectFor } from "../src/jwt.js";
 
 // Request/response shapes are the ones lib/api/auth_service.dart sends and reads.
 
@@ -15,7 +15,8 @@ test("carrier login: Dart request shape -> Dart response shape, scoped to the tr
     assert.deepEqual(r.json.linkedTokens, {});
     assert.equal(r.json.role, "carrier");
     const p = verifySession(r.json.sessionToken, SECRET);
-    assert.equal(p.sub, "Gat - Sam");
+    assert.equal(p.carrier, "Gat - Sam");
+    assert.equal(p.sub, subjectFor("Gat - Sam"));
     assert.equal(p.app_role, "carrier");
     assert.deepEqual(p.trucks, ["64"]);
     assert.equal(p.exp, r.json.exp);

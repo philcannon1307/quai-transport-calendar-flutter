@@ -46,8 +46,8 @@ export function createExchange({ config, jobs, limiters, log }) {
   const invalid = () => ({ status: 401, body: { error: "invalid_credentials" } });
   const upstream = () => ({ status: 502, body: { error: "upstream_unavailable" } });
 
-  function issue({ sub, appRole, trucks, names = [], primaryToken, linkedTokens, extra = {} }) {
-    const { token, exp } = signSession({ sub, appRole, trucks, names }, config.sessionSecret, config.sessionTtlSeconds);
+  function issue({ carrier, appRole, trucks, names = [], primaryToken, linkedTokens, extra = {} }) {
+    const { token, exp } = signSession({ carrier, appRole, trucks, names }, config.sessionSecret, config.sessionTtlSeconds);
     return {
       status: 200,
       body: { accessToken: primaryToken, linkedTokens, role: appRole, sessionToken: token, exp, ...extra },
@@ -98,7 +98,7 @@ export function createExchange({ config, jobs, limiters, log }) {
     const appRole = carrier.displayName === LOGISTIQUE ? "logistique" : "carrier";
     log("login_ok", { carrier: name, ip, role: appRole });
     return issue({
-      sub: carrier.displayName,
+      carrier: carrier.displayName,
       appRole,
       trucks: [carrier.truck, ...linked.map((t) => t.truck)],
       // Same list the app filters delivery_history by (Dart historyCarrierNames).
@@ -153,7 +153,7 @@ export function createExchange({ config, jobs, limiters, log }) {
     for (const r of good) linkedTokens[r.a.username] = r.token;
     log("superuser_ok", { ip, accounts: good.length });
     return issue({
-      sub: SUPERUSER_NAME,
+      carrier: SUPERUSER_NAME,
       appRole: "superuser",
       trucks: good.map((r) => r.a.truck),
       primaryToken: good[0].token,
