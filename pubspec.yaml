@@ -1,0 +1,41 @@
+name: quai_calendar
+description: Quai Lafantaisie Transport Calendar — Flutter rebuild.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+  flutter_riverpod: ^2.5.1
+  # Session persistence (access tokens + role only, never credentials).
+  shared_preferences: ^2.3.2
+  dio: ^5.7.0
+  # Picking-ticket viewer, PDF text (contact extraction), print/download, tel:/Maps links.
+  # PINNED TO 1.x ON PURPOSE. pdfrx 2.x depends on pdfium_dart, whose native-assets
+  # build hook compiles C code during `flutter test`; the platform build host has no
+  # C compiler ("No compiler configured on host linux_x64") so the gate fails before
+  # a single test runs. 1.x has no build hooks (pdfium is fetched/bundled at app
+  # build, WASM on web). Do not raise this to ^2 without a compiler on the host.
+  pdfrx: ^1.3.5
+  printing: any
+  url_launcher: any
+  # Receipt/BOL/announcement photos: pure-Dart resize+JPEG re-encode, and camera/gallery.
+  image: ^4.2.0
+  image_picker: ^1.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - lib/l10n/app_fr.arb
+    - lib/l10n/app_en.arb
