@@ -19,7 +19,7 @@ Plain Node.js, zero third-party dependencies, one file per concern (`src/`).
 Errors: `401 invalid_credentials` (same body for wrong code, unknown person, missing config), `429 too_many_attempts` with a `Retry-After` header, `400` bad input, `403` origin not allowed, `413` body over 4 KB, `415` not JSON, `502 upstream_unavailable` (job service down or rejecting the stored password: a configuration problem, **not** the user's fault).
 
 * **Scoped tokens.** A person only gets tokens for their own truck(s): InterQL = RIDEAU + OPEN GOOSENECK (trucks 3, 4); SADM - Logistique = SADM - David + both Gooseneck trucks; everyone else = one truck. Only SuperUser gets all.
-* **Session token.** HS256 JWT, 12 h by default, claims `sub`, `app_role` (carrier / logistique / superuser), `trucks`, `role:"authenticated"`, `aud:"authenticated"`, `exp`. Signed with `SESSION_JWT_SECRET`; use your Supabase JWT secret so row-level security can read `auth.jwt() ->> 'app_role'`. `src/jwt.js` has `verifySession()` for other servers.
+* **Session token.** HS256 JWT, 12 h by default, claims `sub`, `app_role` (carrier / logistique / superuser), `trucks`, `role:"authenticated"`, `aud:"authenticated"`, `exp`. Signed with `SESSION_JWT_SECRET` (a random value you generate; the same value goes into the Supabase edge-function secret `SESSION_JWT_SECRET`, where `quai-data` and `send-transactional-email` verify it). Claims also include `carrier` (readable name) and `names` (the delivery-history labels this login covers). `src/jwt.js` has `verifySession()` for other servers.
 * **The role comes from here.** The app trusts `role` only from this response.
 
 ## Pick-ups proxy (`GET /middleware/events`)
@@ -50,7 +50,7 @@ You need: a Railway account, access to the GitHub repo, and the list of password
 2. **Point it at this folder.** Open the new service -> **Settings** -> **Source** -> **Root Directory** = `/server`. Railway then finds the `Dockerfile` and `railway.json` here by itself.
 3. **Add the settings.** Service -> **Variables** -> **Raw Editor**. Paste the lines from `.env.example` and replace every `CHANGE-ME`:
    * `CARRIER_CREDENTIALS_JSON`: one line of JSON. Add one entry per person in the app's login list plus the truck accounts, see the list below. Check it is valid JSON at jsonlint.com **without the real passwords**, or add the entries one at a time.
-   * `SESSION_JWT_SECRET`: your Supabase project's JWT secret (Supabase -> Project Settings -> API -> JWT Secret).
+   * `SESSION_JWT_SECRET`: a random value of 40+ characters you make up (password manager). You will paste the SAME value into Lovable (Cloud -> Secrets) as `SESSION_JWT_SECRET`. It is NOT a Supabase value; never type it in chat.
    * `MIDDLEWARE_API_KEY`: the key of the after-sales middleware (`quai-backend-methods`). Ask whoever runs it. Without it everything works except the Pick-ups tab, which shows "unavailable".
    * `ALLOWED_ORIGINS`: the web address of the app (and any other place it is shown), exactly, e.g. `https://your-app.web.app`.
    * `SUPERUSER_USERNAME` and either `SUPERUSER_PASSWORD_HASH` (best) or `SUPERUSER_PASSWORD`. To make a hash: on a computer with Node.js, open a terminal in the `server` folder, run `npm run hash-password`, type the password and paste the printed `scrypt$…` line.

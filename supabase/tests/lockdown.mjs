@@ -1,0 +1,32 @@
+// Runs supabase-lockdown.sql against a throw-away PostgreSQL (PGlite) that imitates the Supabase
+// pieces it touches (roles, storage.objects, the reference tables with their open "Anyone can ..."
+// policies, the email functions with Supabase's default grants).
+//   npm i --no-save @electric-sql/pglite && node supabase/tests/lockdown.mjs path/to/supabase-lockdown.sql
+import { PGlite } from '@electric-sql/pglite'
+import { readFileSync } from 'node:fs'
+
+const sql = readFileSync(process.argv[2] || 'supabase-lockdown.sql', 'utf8')
+const part3 = sql.slice(sql.indexOf('-- ======================================= PART 3'))
+
+const MOCK = "\ncreate role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;\ngrant usage on schema public to anon, authenticated, service_role;\ncreate schema storage; grant usage on schema storage to anon, authenticated, service_role;\ncreate table storage.objects (id uuid default gen_random_uuid() primary key, bucket_id text, name text);\nalter table storage.objects enable row level security;\ngrant all on storage.objects to anon, authenticated, service_role;\ncreate table public.announcements (id uuid default gen_random_uuid() primary key, title text, body text, title_fr text, body_fr text, is_active boolean default true, created_at timestamptz default now(), updated_at timestamptz);\ncreate table public.announcement_images (id uuid default gen_random_uuid() primary key, announcement_id uuid references public.announcements(id) on delete cascade, storage_url text, created_at timestamptz default now());\ncreate table public.order_photos (id uuid default gen_random_uuid() primary key, so_num text, storage_path text, uploaded_by text);\ncreate table public.receipts (id uuid default gen_random_uuid() primary key, carrier_name text, driver_name text, note text default '', storage_path text, public_url text, email_sent boolean default false, created_at timestamptz default now());\ncreate table public.order_adjustments (id uuid default gen_random_uuid() primary key, order_num text, order_kind text default 'SO', carrier_name text, items jsonb default '[]', note text default '', photo_url text, email_sent boolean default false, created_at timestamptz default now());\ncreate table public.delivery_history (so_num text primary key, carrier_name text, ship_date date);\ncreate table public.email_send_log (id uuid default gen_random_uuid() primary key, message_id text, template_name text, recipient_email text, status text, metadata jsonb, created_at timestamptz default now());\ncreate table public.email_send_state (id int primary key default 1);\ncreate table public.suppressed_emails (id uuid default gen_random_uuid() primary key, email text);\ncreate table public.email_unsubscribe_tokens (token text primary key default 't', email text, used_at timestamptz);\n-- Supabase default privileges: new tables/functions are open to the API roles\ngrant all on all tables in schema public to anon, authenticated, service_role;\ncreate function public.enqueue_email(queue_name text, payload jsonb) returns bigint language sql as 'select 1::bigint';\ncreate function public.read_email_batch(q text, a integer, b integer) returns int language sql as 'select 1';\ncreate function public.delete_email(q text, id bigint) returns boolean language sql as 'select true';\ncreate function public.move_to_dlq(a text, b text, c bigint, d jsonb) returns bigint language sql as 'select 1::bigint';\ngrant execute on all functions in schema public to anon, authenticated, service_role;\n-- the reference project's open policies\ndo $$ declare t text; begin\n  foreach t in array array['announcements','announcement_images','order_photos','receipts','order_adjustments','delivery_history'] loop\n    execute format('alter table public.%I enable row level security', t);\n    execute format('create policy \"Anyone can read %s\" on public.%I for select using (true)', t, t);\n    execute format('create policy \"Anyone can write %s\" on public.%I for insert with check (true)', t, t);\n    execute format('create policy \"Anyone can change %s\" on public.%I for update using (true)', t, t);\n    execute format('create policy \"Anyone can remove %s\" on public.%I for delete using (true)', t, t);\n  end loop;\nend $$;\ncreate policy \"Anyone can upload receipts\" on storage.objects for insert with check (bucket_id = 'receipts');\ncreate policy \"Anyone can read receipts\" on storage.objects for select using (bucket_id = 'receipts');\ncreate policy \"Anyone can upload announcement images\" on storage.objects for insert with check (bucket_id = 'announcement-images');\ncreate policy \"Anyone can delete announcement images\" on storage.objects for delete using (bucket_id = 'announcement-images');\n-- leftovers of the earlier JWT-claims design\ncreate function public.upsert_delivery_history(rows jsonb) returns integer language sql as 'select 0';\n"
+
+async function fresh() { const db = new PGlite(); await db.exec(MOCK); return db }
+const lastRows = (res) => res.filter((r) => r.fields?.some((f) => f.name === 'result')).pop().rows
+function report(title, rows, expectFail) {
+  const bad = rows.filter((r) => r.result !== 'PASS')
+  console.log(title + ': ' + (rows.length - bad.length) + ' PASS, ' + bad.length + ' FAIL')
+  if (!expectFail) bad.forEach((r) => console.log('  FAIL ' + r.label + ' (expected ' + r.expected + ', got ' + r.got + ')'))
+  return bad.length
+}
+
+let failures = 0
+// negative control: the checks must FAIL on the open reference setup
+{ const db = await fresh(); const n = report('BEFORE (open policies)', lastRows(await db.exec(part3)), true); if (n < 20) { console.log('negative control too weak'); failures++ } }
+// apply twice (idempotent), verifying each time
+{ const db = await fresh()
+  failures += report('AFTER run 1', lastRows(await db.exec(sql)))
+  failures += report('AFTER run 2', lastRows(await db.exec(sql)))
+  const left = await db.query("select count(*)::int n from pg_proc where proname = 'upsert_delivery_history'"); if (left.rows[0].n !== 0) { console.log('old function not removed'); failures++ }
+  const col = await db.query("select 1 from information_schema.columns where table_name='order_adjustments' and column_name='transfer_locations'"); if (col.rows.length !== 1) { console.log('transfer_locations missing'); failures++ } }
+console.log(failures === 0 ? 'ALL GOOD' : 'FAILURES: ' + failures)
+process.exit(failures === 0 ? 0 : 1)

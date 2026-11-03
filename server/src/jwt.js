@@ -1,7 +1,9 @@
 import { createHash, createHmac, timingSafeEqual, randomUUID } from "node:crypto";
 
-// HS256 session JWT. Signed with SESSION_JWT_SECRET. Set that to the Supabase project's
-// JWT secret and Supabase RLS can read the claims with auth.jwt() ->> 'app_role'.
+// HS256 session JWT. Signed with SESSION_JWT_SECRET, a random 32+ character value that only this
+// server and the Supabase edge functions (quai-data, send-transactional-email) know. The edge
+// functions verify the token themselves (supabase/functions/quai-data/guard.ts) and read the claims
+// carrier / app_role / names. Supabase's own JWT secret is NOT used (Lovable Cloud does not expose it).
 const b64u = (buf) => Buffer.from(buf).toString("base64url");
 const HEADER = b64u(JSON.stringify({ alg: "HS256", typ: "JWT" }));
 
