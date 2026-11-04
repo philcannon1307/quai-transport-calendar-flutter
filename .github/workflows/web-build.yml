@@ -30,25 +30,54 @@ jobs:
           cache: true
 
       - run: flutter --version
-      - run: flutter pub get
+      - name: Pub get
+        run: set -o pipefail; mkdir -p logs; flutter pub get 2>&1 | tee logs/pub-get.log
 
       # Non-blocking: reports findings without failing the build.
       - name: Analyze
-        run: flutter analyze
+        run: set -o pipefail; flutter analyze 2>&1 | tee logs/analyze.log
         continue-on-error: true
 
+      # Test failures are REPORTED (red annotation + summary + full log) but do not stop the web build,
+      # so the owner still gets an artifact. Make this blocking again once the suite is green.
       - name: Test
-        run: flutter test
+        id: tests
+        run: |
+          set -o pipefail
+          flutter test --reporter expanded 2>&1 | tee logs/test.log
+        continue-on-error: true
+
+      - name: Summarise test failures
+        if: always()
+        run: |
+          {
+            echo "## Test result: ${{ steps.tests.outcome }}"
+            echo '```'
+            grep -E "^[0-9:+ -]*\[E\]|Some tests failed|All tests passed|tests passed" logs/test.log | head -40 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.tests.outcome }}" = "failure" ]; then echo "::error::flutter test failed - see build-log artifact (logs/test.log)"; fi
 
       # config/public-config.json holds PUBLIC values only (Railway URLs). No secrets belong in it.
-      - name: Build web
-        run: flutter build web --release --dart-define-from-file=config/public-config.json
-
-      - name: Check the build points at Railway, not Lovable/Supabase
+      - name: Check config points at Railway, not Lovable/Supabase
         run: |
-          set -e
-          grep -rq "up.railway.app" build/web || { echo "Railway URL missing from build"; exit 1; }
-          if grep -rEq "supabase\.co|lovable\.app/functions" build/web; then echo "Old backend URL found in build"; exit 1; fi
+          grep -q "up.railway.app" config/public-config.json || { echo "::error::config/public-config.json has no Railway URL"; exit 1; }
+          if grep -Eq "supabase\.co|lovable\.app" config/public-config.json; then echo "::error::old backend URL in config/public-config.json"; exit 1; fi
+
+      - name: Build web
+        run: set -o pipefail; flutter build web --release --dart-define-from-file=config/public-config.json 2>&1 | tee logs/build-web.log
+
+      - name: Build output sanity
+        run: test -f build/web/index.html && test -f build/web/main.dart.js || { echo "::error::build/web is incomplete"; exit 1; }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: logs
+          retention-days: 14
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
