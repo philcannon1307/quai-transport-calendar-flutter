@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { startApp, startStub, STUB_ACCOUNTS, ORIGIN, SECRET } from "./helpers.js";
+import { startApp, startStub, STUB_ACCOUNTS, ORIGIN, SECRET, makeEnv } from "./helpers.js";
 import { verifySession, subjectFor } from "../src/jwt.js";
 
 // Request/response shapes are the ones lib/api/auth_service.dart sends and reads.
@@ -49,7 +49,11 @@ test("SADM - Logistique: role logistique, backend account SADM - David + Goosene
     assert.equal(r.status, 200);
     assert.equal(r.json.role, "logistique");
     assert.equal(r.json.accessToken, "job-token:SADM - David");
-    assert.deepEqual(Object.keys(r.json.linkedTokens).sort(), ["OPEN GOOSENECK", "RIDEAU GOOSENECK"]);
+    // Gooseneck (loaded calendars) + the SADM trucks (picking tickets of other trucks' orders).
+    assert.deepEqual(Object.keys(r.json.linkedTokens).sort(), [
+      "OPEN GOOSENECK", "RIDEAU GOOSENECK", "SADM - Jayson", "SADM - Mathieu", "SADM - Quai2go", "SADM - Steve", "SADM - Éric",
+    ]);
+    for (const n of ["SADM - Jayson", "SADM - Mathieu", "SADM - Quai2go", "SADM - Steve"]) assert.equal(r.json.linkedTokens[n], "job-token:" + n);
     assert.equal(verifySession(r.json.sessionToken, SECRET).app_role, "logistique");
   } finally { await app.close(); await stub.close(); }
 });
@@ -200,4 +204,17 @@ test("other routes: /health is open, unknown paths 404, GET /exchange 405", asyn
     assert.equal((await app.call(null, { method: "GET", path: "/nope", origin: null })).status, 404);
     assert.equal((await app.call(null, { method: "GET", path: "/exchange" })).status, 405);
   } finally { await app.close(); }
+});
+
+test("SADM - Logistique still signs in when an extra SADM truck has no credentials", async () => {
+  const stub = await startStub(STUB_ACCOUNTS);
+  const creds = JSON.parse(makeEnv().CARRIER_CREDENTIALS_JSON);
+  delete creds["SADM - Jayson"];
+  const app = await startApp({ stub, env: { CARRIER_CREDENTIALS_JSON: JSON.stringify(creds) } });
+  try {
+    const r = await app.call({ carrier: "SADM - Logistique", code: "333333" });
+    assert.equal(r.status, 200);
+    assert.ok(!("SADM - Jayson" in r.json.linkedTokens));
+    assert.ok("SADM - Steve" in r.json.linkedTokens && "RIDEAU GOOSENECK" in r.json.linkedTokens);
+  } finally { await app.close(); await stub.close(); }
 });

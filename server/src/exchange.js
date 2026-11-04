@@ -95,6 +95,18 @@ export function createExchange({ config, jobs, limiters, log }) {
     }
     const linkedTokens = {};
     linked.forEach((t, i) => { linkedTokens[t.displayName] = tokens[i + 1]; });
+    // Logistique only LOADS the Gooseneck calendars, but opening a picking ticket for another SADM
+    // truck's order needs THAT truck's token (the app tries every SADM token on a 404). Best effort:
+    // a missing credential or a failed login here never blocks the sign-in.
+    if (carrier.displayName === LOGISTIQUE) {
+      const loaded = new Set(linked.map((t) => t.displayName));
+      const extra = (carrier.linkedTrucks ?? []).filter((t) => !loaded.has(t.displayName) && passwordFor(t.displayName));
+      const settled = await Promise.allSettled(extra.map((t) => jobs.login(t.displayName, passwordFor(t.displayName))));
+      settled.forEach((r, i) => {
+        if (r.status === "fulfilled" && r.value) linkedTokens[extra[i].displayName] = r.value;
+        else log("ticket_token_unavailable", { carrier: name, account: extra[i].displayName });
+      });
+    }
     const appRole = carrier.displayName === LOGISTIQUE ? "logistique" : "carrier";
     log("login_ok", { carrier: name, ip, role: appRole });
     return issue({
