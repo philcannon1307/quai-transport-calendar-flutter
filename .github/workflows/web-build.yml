@@ -17,6 +17,7 @@ env:
   FLUTTER_VERSION: "3.35.7"
 
 jobs:
+  # The web build does NOT depend on the tests, so the owner always gets an artifact when the build itself works.
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -29,34 +30,8 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
-      - run: flutter --version
       - name: Pub get
         run: set -o pipefail; mkdir -p logs; flutter pub get 2>&1 | tee logs/pub-get.log
-
-      # Non-blocking: reports findings without failing the build.
-      - name: Analyze
-        run: set -o pipefail; flutter analyze 2>&1 | tee logs/analyze.log
-        continue-on-error: true
-
-      # Test failures are REPORTED (red annotation + summary + full log) but do not stop the web build,
-      # so the owner still gets an artifact. Make this blocking again once the suite is green.
-      - name: Test
-        id: tests
-        run: |
-          set -o pipefail
-          flutter test --reporter expanded 2>&1 | tee logs/test.log
-        continue-on-error: true
-
-      - name: Summarise test failures
-        if: always()
-        run: |
-          {
-            echo "## Test result: ${{ steps.tests.outcome }}"
-            echo '```'
-            grep -E "^[0-9:+ -]*\[E\]|Some tests failed|All tests passed|tests passed" logs/test.log | head -40 || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.tests.outcome }}" = "failure" ]; then echo "::error::flutter test failed - see build-log artifact (logs/test.log)"; fi
 
       # config/public-config.json holds PUBLIC values only (Railway URLs). No secrets belong in it.
       - name: Check config points at Railway, not Lovable/Supabase
@@ -85,6 +60,43 @@ jobs:
           path: build/web
           retention-days: 14
           if-no-files-found: error
+
+  # Tests run in their own job: a red test never blocks the web artifact.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Analyze (non-blocking)
+        run: set -o pipefail; mkdir -p logs; flutter analyze 2>&1 | tee logs/analyze.log
+        continue-on-error: true
+
+      - name: Test
+        run: set -o pipefail; mkdir -p logs; flutter test --reporter expanded 2>&1 | tee logs/test.log
+
+      - name: Failing tests
+        if: failure()
+        run: |
+          echo "## Failing tests" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "\[E\]" logs/test.log | sort -u | head -40 | tee -a "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: logs
+          retention-days: 14
+          if-no-files-found: ignore
 
   # Android stub: disabled (if: false). Unsigned build only; enable when the owner wants it. No iOS yet.
   android:
