@@ -13,6 +13,7 @@ The workflow `.github/workflows/web-build.yml` builds the Flutter web app. It us
 3. Unzip it: that folder is the complete website, ready to upload to a web host.
 
 ## Notes
-- The run fails if the build contains no Railway address or still contains an old Supabase address.
-- `flutter analyze` warnings are shown but do not stop the build; failing tests do.
+- The run fails early if the config has no Railway address or has an old Supabase/Lovable address.
+- Tests run in a separate job: if one fails, the web-build artifact is still produced. Failing test names are listed on the run page; the test-log artifact has the full output and build-log has the build output.
+- If a run is red, send a screenshot of the red step or the log artifact.
 - An Android job exists in the file but is switched off (`if: false`). iOS is not set up.

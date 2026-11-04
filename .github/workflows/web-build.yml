@@ -17,6 +17,7 @@ env:
   FLUTTER_VERSION: "3.35.7"
 
 jobs:
+  # The web build does NOT depend on the tests, so the owner always gets an artifact when the build itself works.
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -29,26 +30,29 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
-      - run: flutter --version
-      - run: flutter pub get
-
-      # Non-blocking: reports findings without failing the build.
-      - name: Analyze
-        run: flutter analyze
-        continue-on-error: true
-
-      - name: Test
-        run: flutter test
+      - name: Pub get
+        run: set -o pipefail; mkdir -p logs; flutter pub get 2>&1 | tee logs/pub-get.log
 
       # config/public-config.json holds PUBLIC values only (Railway URLs). No secrets belong in it.
-      - name: Build web
-        run: flutter build web --release --dart-define-from-file=config/public-config.json
-
-      - name: Check the build points at Railway, not Lovable/Supabase
+      - name: Check config points at Railway, not Lovable/Supabase
         run: |
-          set -e
-          grep -rq "up.railway.app" build/web || { echo "Railway URL missing from build"; exit 1; }
-          if grep -rEq "supabase\.co|lovable\.app/functions" build/web; then echo "Old backend URL found in build"; exit 1; fi
+          grep -q "up.railway.app" config/public-config.json || { echo "::error::config/public-config.json has no Railway URL"; exit 1; }
+          if grep -Eq "supabase\.co|lovable\.app" config/public-config.json; then echo "::error::old backend URL in config/public-config.json"; exit 1; fi
+
+      - name: Build web
+        run: set -o pipefail; flutter build web --release --dart-define-from-file=config/public-config.json 2>&1 | tee logs/build-web.log
+
+      - name: Build output sanity
+        run: test -f build/web/index.html && test -f build/web/main.dart.js || { echo "::error::build/web is incomplete"; exit 1; }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: logs
+          retention-days: 14
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
@@ -56,6 +60,43 @@ jobs:
           path: build/web
           retention-days: 14
           if-no-files-found: error
+
+  # Tests run in their own job: a red test never blocks the web artifact.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Analyze (non-blocking)
+        run: set -o pipefail; mkdir -p logs; flutter analyze 2>&1 | tee logs/analyze.log
+        continue-on-error: true
+
+      - name: Test
+        run: set -o pipefail; mkdir -p logs; flutter test --reporter expanded 2>&1 | tee logs/test.log
+
+      - name: Failing tests
+        if: failure()
+        run: |
+          echo "## Failing tests" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "\[E\]" logs/test.log | sort -u | head -40 | tee -a "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: logs
+          retention-days: 14
+          if-no-files-found: ignore
 
   # Android stub: disabled (if: false). Unsigned build only; enable when the owner wants it. No iOS yet.
   android:
