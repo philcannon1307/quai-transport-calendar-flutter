@@ -1,5 +1,5 @@
 import { scryptSync, randomBytes } from "node:crypto";
-import { CARRIERS, SUPERUSER_NAME } from "./roster.js";
+import { CARRIERS, SUPERUSER_NAME, allAccounts, normName } from "./roster.js";
 
 export const DEFAULT_MIDDLEWARE_URL = "https://quai-backend-methods-production.up.railway.app";
 export const DEFAULT_JOB_SERVICE_URL = "https://quai-contractor-calendar-production.up.railway.app";
@@ -50,6 +50,12 @@ export function loadConfig(env = process.env) {
       }
     } catch {
       errors.push("CARRIER_CREDENTIALS_JSON is not valid JSON (it must be one JSON object).");
+    }
+    // Accent/case/space-insensitive: a credentials key spelled "SADM - Eric" serves the roster name "SADM - Éric".
+    const byNorm = new Map();
+    for (const [k, v] of credentials) if (!byNorm.has(normName(k))) byNorm.set(normName(k), v);
+    for (const n of [...CARRIERS.map((c) => c.displayName), ...allAccounts().map((a) => a.username)]) {
+      if (!credentials.has(n) && byNorm.has(normName(n))) credentials.set(n, byNorm.get(normName(n)));
     }
     const missing = CARRIERS.filter((c) => !credentials.has(c.displayName)).map((c) => c.displayName);
     if (missing.length) warnings.push("No credentials for these logins, so they are disabled: " + missing.join(", "));

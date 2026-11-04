@@ -46,3 +46,16 @@ test("hashPassword is salted", () => {
   assert.notEqual(hashPassword("a"), hashPassword("a"));
   assert.match(hashPassword("a"), /^scrypt\$/);
 });
+
+test("credential keys match the roster ignoring accents, case and spaces", async () => {
+  const { normName, carrierByName } = await import("../src/roster.js");
+  assert.equal(normName("  SADM -  Éric "), "sadm - eric");
+  assert.equal(carrierByName("SADM - Eric")?.displayName, "SADM - Éric");
+  assert.equal(carrierByName("sadm - éric")?.displayName, "SADM - Éric");
+  const creds = JSON.parse(makeEnv().CARRIER_CREDENTIALS_JSON);
+  delete creds["SADM - Éric"];
+  creds["SADM - Eric"] = "444444";
+  const { config, warnings } = loadConfig(makeEnv({ CARRIER_CREDENTIALS_JSON: JSON.stringify(creds) }));
+  assert.equal(config.credentials.get("SADM - Éric")?.code, "444444");
+  assert.ok(!warnings.join(" ").includes("SADM - Éric"));
+});
