@@ -22,11 +22,13 @@ const Set<String> kReceiptsAllowed = <String>{
 
 /// The SuperUser sees the button too; everyone else only if allowlisted.
 bool canUploadReceipts(String? carrierName, {required bool isSuperUser}) =>
-    isSuperUser || (carrierName != null && kReceiptsAllowed.contains(carrierName));
+    isSuperUser ||
+    (carrierName != null && kReceiptsAllowed.contains(carrierName));
 
 /// SADM - Logistique uploads a bill of lading (BOL, emailed to sadm@groupeql.com);
 /// everyone else uploads a receipt (emailed to comptabilite@groupeql.com).
 /// The RECIPIENT is fixed server-side by the email template, never chosen here.
 bool isBolMode(String? carrierName) => carrierName == kLogistique;
 
-String receiptTemplateName({required bool bol}) => bol ? "bol-uploaded" : "receipt-uploaded";
+String receiptTemplateName({required bool bol}) =>
+    bol ? "bol-uploaded" : "receipt-uploaded";

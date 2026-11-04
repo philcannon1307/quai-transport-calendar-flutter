@@ -5,7 +5,9 @@ import "backend_gateway.dart";
 /// (`#/unsubscribe?token=x`); accept both.
 String? unsubscribeToken({required String routeName, required Uri pageUri}) {
   final inRoute = Uri.tryParse(routeName)?.queryParameters["token"];
-  final raw = (inRoute != null && inRoute.isNotEmpty) ? inRoute : pageUri.queryParameters["token"];
+  final raw = (inRoute != null && inRoute.isNotEmpty)
+      ? inRoute
+      : pageUri.queryParameters["token"];
   if (raw == null) return null;
   final t = raw.trim();
   return t.isEmpty ? null : t;

@@ -9,7 +9,8 @@ void main() {
       expect(interql!.truck, "3");
       expect(interql.backendUsername, "RIDEAU GOOSENECK");
       expect(interql.linkedTrucks.map((t) => t.truck).toList(), <String>["4"]);
-      expect(interql.linkedTrucks.map((t) => t.displayName).toList(), <String>["OPEN GOOSENECK"]);
+      expect(interql.linkedTrucks.map((t) => t.displayName).toList(),
+          <String>["OPEN GOOSENECK"]);
     });
 
     test("both Gooseneck accounts resolve to the InterQL calendar name", () {

@@ -34,20 +34,26 @@ class _Actions implements TicketFileActions {
 
 Strings _strings() {
   final values = <String, String>{};
-  kOriginalKeyToArb.forEach((dotted, arb) => values[arb] = dotted.split(".").last);
+  kOriginalKeyToArb
+      .forEach((dotted, arb) => values[arb] = dotted.split(".").last);
   return Strings.forTests(values);
 }
 
-TicketService _service(Future<TicketHttpResult> Function() answer) => TicketService(
-      fetch: (String? token, String ticketNum, {void Function(double? fraction)? onDownload}) => answer(),
+TicketService _service(Future<TicketHttpResult> Function() answer) =>
+    TicketService(
+      fetch: (String? token, String ticketNum,
+              {void Function(double? fraction)? onDownload}) =>
+          answer(),
       tokens: _Tokens(),
       retryDelay: Duration.zero,
     );
 
-Widget _host(TicketService svc, _Actions actions, {Widget? home}) => ProviderScope(
+Widget _host(TicketService svc, _Actions actions, {Widget? home}) =>
+    ProviderScope(
       overrides: <Override>[
         ticketServiceProvider.overrideWithValue(svc),
-        ticketPdfBuilderProvider.overrideWithValue((context, bytes, name) => Text("PDF:${bytes.length}:$name")),
+        ticketPdfBuilderProvider.overrideWithValue(
+            (context, bytes, name) => Text("PDF:${bytes.length}:$name")),
         ticketFileActionsProvider.overrideWithValue(actions),
       ],
       child: StringsScope(
@@ -63,34 +69,54 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets("shows honest, rising progress while the document is prepared", (tester) async {
+  testWidgets("shows honest, rising progress while the document is prepared",
+      (tester) async {
     final gate = Completer<TicketHttpResult>();
     await tester.pumpWidget(_host(_service(() => gate.future), _Actions()));
     await tester.pump();
     expect(find.byKey(const Key("ticket-progress")), findsOneWidget);
     expect(find.textContaining("NetSuite"), findsOneWidget);
 
-    final before = tester.widget<LinearProgressIndicator>(find.byKey(const Key("ticket-progress"))).value!;
+    final before = tester
+        .widget<LinearProgressIndicator>(
+            find.byKey(const Key("ticket-progress")))
+        .value!;
     await tester.pump(const Duration(seconds: 4));
-    final after = tester.widget<LinearProgressIndicator>(find.byKey(const Key("ticket-progress"))).value!;
+    final after = tester
+        .widget<LinearProgressIndicator>(
+            find.byKey(const Key("ticket-progress")))
+        .value!;
     expect(after, greaterThan(before));
     expect(after, greaterThan(0.3));
     expect(after, lessThanOrEqualTo(0.7));
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets("print and download are disabled until the PDF is ready", (tester) async {
+  testWidgets("print and download are disabled until the PDF is ready",
+      (tester) async {
     final gate = Completer<TicketHttpResult>();
     await tester.pumpWidget(_host(_service(() => gate.future), _Actions()));
     await tester.pump();
-    expect(tester.widget<OutlinedButton>(find.byKey(const Key("ticket-print"))).onPressed, isNull);
-    expect(tester.widget<OutlinedButton>(find.byKey(const Key("ticket-download"))).onPressed, isNull);
+    expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(const Key("ticket-print")))
+            .onPressed,
+        isNull);
+    expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(const Key("ticket-download")))
+            .onPressed,
+        isNull);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets("once loaded it shows the PDF view, hides the progress bar, and enables print + download", (tester) async {
+  testWidgets(
+      "once loaded it shows the PDF view, hides the progress bar, and enables print + download",
+      (tester) async {
     final actions = _Actions();
-    await tester.pumpWidget(_host(_service(() async => const TicketHttpResult(200, <int>[1, 2, 3])), actions));
+    await tester.pumpWidget(_host(
+        _service(() async => const TicketHttpResult(200, <int>[1, 2, 3])),
+        actions));
     await _settle(tester);
 
     expect(find.text("PDF:3:SO1"), findsOneWidget);
@@ -104,22 +130,31 @@ void main() {
     expect(actions.downloaded, 1);
   });
 
-  testWidgets("a missing ticket shows the friendly message and a retry button, not a blank screen", (tester) async {
-    await tester.pumpWidget(_host(_service(() async => const TicketHttpResult(404)), _Actions()));
+  testWidgets(
+      "a missing ticket shows the friendly message and a retry button, not a blank screen",
+      (tester) async {
+    await tester.pumpWidget(
+        _host(_service(() async => const TicketHttpResult(404)), _Actions()));
     await _settle(tester);
     expect(find.byKey(const Key("ticket-error")), findsOneWidget);
     expect(find.textContaining("temporairement indisponible"), findsOneWidget);
     expect(find.byKey(const Key("ticket-retry")), findsOneWidget);
-    expect(tester.widget<OutlinedButton>(find.byKey(const Key("ticket-print"))).onPressed, isNull);
+    expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(const Key("ticket-print")))
+            .onPressed,
+        isNull);
   });
 
   testWidgets("a stale session says so", (tester) async {
-    await tester.pumpWidget(_host(_service(() async => const TicketHttpResult(401)), _Actions()));
+    await tester.pumpWidget(
+        _host(_service(() async => const TicketHttpResult(401)), _Actions()));
     await _settle(tester);
     expect(find.textContaining("Session expirée"), findsOneWidget);
   });
 
-  testWidgets("the Close button is big, red and always on screen", (tester) async {
+  testWidgets("the Close button is big, red and always on screen",
+      (tester) async {
     final gate = Completer<TicketHttpResult>();
     await tester.pumpWidget(_host(_service(() => gate.future), _Actions()));
     await tester.pump();
@@ -136,11 +171,15 @@ void main() {
     final home = Builder(
       builder: (context) => Scaffold(
         body: Center(
-          child: ElevatedButton(onPressed: () => showTicketSheet(context, "SO1"), child: const Text("open")),
+          child: ElevatedButton(
+              onPressed: () => showTicketSheet(context, "SO1"),
+              child: const Text("open")),
         ),
       ),
     );
-    await tester.pumpWidget(_host(_service(() async => const TicketHttpResult(200, <int>[1])), _Actions(), home: home));
+    await tester.pumpWidget(_host(
+        _service(() async => const TicketHttpResult(200, <int>[1])), _Actions(),
+        home: home));
     await tester.tap(find.text("open"));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));

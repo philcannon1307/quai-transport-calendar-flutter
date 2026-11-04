@@ -1,7 +1,9 @@
 /// In-memory picking-ticket cache. Ported from the reference app: 10-minute TTL
 /// so reopening the same ticket is instant but a stale PDF never lingers.
 class TicketCache {
-  TicketCache({this.ttl = const Duration(minutes: 10), DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+  TicketCache(
+      {this.ttl = const Duration(minutes: 10), DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now;
 
   final Duration ttl;
   final DateTime Function() _clock;
@@ -17,7 +19,8 @@ class TicketCache {
     return e.bytes;
   }
 
-  void put(String orderNum, List<int> bytes) => _entries[orderNum] = _Entry(bytes, _clock());
+  void put(String orderNum, List<int> bytes) =>
+      _entries[orderNum] = _Entry(bytes, _clock());
 
   void clear() => _entries.clear();
 }

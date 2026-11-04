@@ -23,7 +23,8 @@ Future<void> settle(WidgetTester tester) async {
 /// Minimal dictionary keyed the way Strings expects (ARB identifiers).
 Strings _strings() {
   final values = <String, String>{};
-  kOriginalKeyToArb.forEach((dotted, arb) => values[arb] = dotted.split(".").last);
+  kOriginalKeyToArb
+      .forEach((dotted, arb) => values[arb] = dotted.split(".").last);
   return Strings.forTests(values);
 }
 
@@ -55,27 +56,41 @@ Order _order({
   String service = "Livraison",
   OrderKind kind = OrderKind.order,
 }) =>
-    Order(kind: kind, soNum: soNum, date: date, serviceType: service, customer: "Client " + soNum);
+    Order(
+        kind: kind,
+        soNum: soNum,
+        date: date,
+        serviceType: service,
+        customer: "Client " + soNum);
 
 void main() {
   setUpAll(initializeDateFormatting);
 
-  testWidgets("calendar renders a day section with its order card", (tester) async {
+  testWidgets("calendar renders a day section with its order card",
+      (tester) async {
     useTallScreen(tester);
     final iso = _iso(DateTime.now());
-    await tester.pumpWidget(_host(const CalendarScreen(), <Order>[_order(soNum: "SO1001", date: iso)]));
+    await tester.pumpWidget(_host(
+        const CalendarScreen(), <Order>[_order(soNum: "SO1001", date: iso)]));
     await settle(tester);
     expect(tester.takeException(), isNull);
-    expect(find.byType(SegmentedButton<int>), findsOneWidget);
+    expect(find.byKey(const Key("week-range")), findsOneWidget);
     expect(find.text("SO1001"), findsOneWidget);
   });
 
-  testWidgets("calendar renders a transfer card with its TO badge", (tester) async {
+  testWidgets("calendar renders a transfer card with its TO badge",
+      (tester) async {
     useTallScreen(tester);
     final iso = _iso(DateTime.now());
     await tester.pumpWidget(_host(
       const CalendarScreen(),
-      <Order>[_order(soNum: "TO777", date: iso, service: "Transfert / Transfer", kind: OrderKind.transfer)],
+      <Order>[
+        _order(
+            soNum: "TO777",
+            date: iso,
+            service: "Transfert / Transfer",
+            kind: OrderKind.transfer)
+      ],
     ));
     await settle(tester);
     expect(tester.takeException(), isNull);
@@ -88,15 +103,17 @@ void main() {
     await tester.pumpWidget(_host(const CalendarScreen(), <Order>[]));
     await settle(tester);
     expect(tester.takeException(), isNull);
-    expect(find.byType(SegmentedButton<int>), findsOneWidget);
+    expect(find.byKey(const Key("week-range")), findsOneWidget);
   });
 
-  testWidgets("Mes commandes shows upcoming work and hides the past", (tester) async {
+  testWidgets("Mes commandes shows upcoming work and hides the past",
+      (tester) async {
     useTallScreen(tester);
     final now = DateTime.now();
     await tester.pumpWidget(_host(const MyOrdersScreen(), <Order>[
       _order(soNum: "SOUPCOMING", date: _iso(now.add(const Duration(days: 2)))),
-      _order(soNum: "SOPAST", date: _iso(now.subtract(const Duration(days: 9)))),
+      _order(
+          soNum: "SOPAST", date: _iso(now.subtract(const Duration(days: 9)))),
     ]));
     await settle(tester);
     expect(tester.takeException(), isNull);
@@ -104,10 +121,12 @@ void main() {
     expect(find.text("SOPAST"), findsNothing);
   });
 
-  testWidgets("Mes commandes hides work beyond the one-week window", (tester) async {
+  testWidgets("Mes commandes hides work beyond the one-week window",
+      (tester) async {
     useTallScreen(tester);
     final far = _iso(DateTime.now().add(const Duration(days: 11)));
-    await tester.pumpWidget(_host(const MyOrdersScreen(), <Order>[_order(soNum: "SOFAR", date: far)]));
+    await tester.pumpWidget(_host(
+        const MyOrdersScreen(), <Order>[_order(soNum: "SOFAR", date: far)]));
     await settle(tester);
     expect(tester.takeException(), isNull);
     expect(find.text("SOFAR"), findsNothing);

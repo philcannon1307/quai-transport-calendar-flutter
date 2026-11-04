@@ -17,6 +17,7 @@ class AuthResult {
 
   /// Signed session JWT (role claim, short TTL) for backend calls, if issued.
   final String? sessionToken;
+
   /// backend username -> access token
   final Map<String, String> linkedTokens;
 }
@@ -43,7 +44,8 @@ abstract class AuthService {
   /// on success, returns one access token per backend account in
   /// [AuthResult.linkedTokens] (keyed by backend username). Nothing is checked
   /// or stored client-side.
-  Future<AuthResult> signInSuperUser({required String username, required String password});
+  Future<AuthResult> signInSuperUser(
+      {required String username, required String password});
 }
 
 /// Calls the server-side token exchange. Endpoint is injected, never a secret.
@@ -56,13 +58,17 @@ class TokenExchangeAuthService implements AuthService {
   TokenExchangeAuthService({required this.exchangeUrl, required this.post});
 
   final String exchangeUrl;
+
   /// Injected transport so this stays unit-testable: body -> decoded JSON.
-  final Future<Map<String, dynamic>> Function(String url, Map<String, dynamic> body) post;
+  final Future<Map<String, dynamic>> Function(
+      String url, Map<String, dynamic> body) post;
 
   @override
-  Future<AuthResult> signInSuperUser({required String username, required String password}) async {
+  Future<AuthResult> signInSuperUser(
+      {required String username, required String password}) async {
     if (exchangeUrl.isEmpty) {
-      throw AuthFailure("NOT_CONFIGURED: server-side token exchange endpoint is not set.");
+      throw AuthFailure(
+          "NOT_CONFIGURED: server-side token exchange endpoint is not set.");
     }
     final json = await post(exchangeUrl, <String, dynamic>{
       "carrier": kSuperUserName,
@@ -76,10 +82,12 @@ class TokenExchangeAuthService implements AuthService {
         if (v is String && v.isNotEmpty) linked[k.toString()] = v;
       });
     }
-    if (linked.isEmpty) throw AuthFailure("Invalid response from token exchange.");
+    if (linked.isEmpty)
+      throw AuthFailure("Invalid response from token exchange.");
     // SuperUser is whatever the SERVER says: a response without role=superuser is
     // rejected, so a misbehaving endpoint cannot grant the admin UI.
-    if (json["role"] != kRoleSuperUser) throw AuthFailure("Invalid response from token exchange.");
+    if (json["role"] != kRoleSuperUser)
+      throw AuthFailure("Invalid response from token exchange.");
     final primary = json["accessToken"];
     final jwt = json["sessionToken"];
     return AuthResult(
@@ -91,16 +99,19 @@ class TokenExchangeAuthService implements AuthService {
   }
 
   @override
-  Future<AuthResult> signIn({required Carrier carrier, required String code}) async {
+  Future<AuthResult> signIn(
+      {required Carrier carrier, required String code}) async {
     if (exchangeUrl.isEmpty) {
-      throw AuthFailure("NOT_CONFIGURED: server-side token exchange endpoint is not set.");
+      throw AuthFailure(
+          "NOT_CONFIGURED: server-side token exchange endpoint is not set.");
     }
     final json = await post(exchangeUrl, <String, dynamic>{
       "carrier": carrier.displayName,
       "code": code,
     });
     final token = json["accessToken"];
-    if (token is! String || token.isEmpty) throw AuthFailure("Invalid response from token exchange.");
+    if (token is! String || token.isEmpty)
+      throw AuthFailure("Invalid response from token exchange.");
     final linked = <String, String>{};
     final rawLinked = json["linkedTokens"];
     if (rawLinked is Map) {
@@ -125,7 +136,8 @@ class TokenExchangeAuthService implements AuthService {
 /// missing backend can never be mistaken for a working login.
 class UnimplementedAuthService implements AuthService {
   @override
-  Future<AuthResult> signInSuperUser({required String username, required String password}) async {
+  Future<AuthResult> signInSuperUser(
+      {required String username, required String password}) async {
     throw AuthFailure(
       "PENDING_BACKEND: the server-side token exchange is not deployed yet. "
       "The SuperUser login cannot work until it exists.",
@@ -133,7 +145,8 @@ class UnimplementedAuthService implements AuthService {
   }
 
   @override
-  Future<AuthResult> signIn({required Carrier carrier, required String code}) async {
+  Future<AuthResult> signIn(
+      {required Carrier carrier, required String code}) async {
     throw AuthFailure(
       "PENDING_BACKEND: the server-side token exchange is not deployed yet. "
       "The Railway job service credentials must move server-side before sign-in can work.",

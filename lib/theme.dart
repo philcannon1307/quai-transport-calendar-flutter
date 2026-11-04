@@ -10,6 +10,7 @@ ThemeData buildTheme() => quaiTheme(Brightness.light);
 // --- Legacy aliases (admin / unsubscribe / banner screens, phase 2 will migrate them to context.q) ---
 /// Ink (was navy).
 const Color kNavy = Color(0xFF1A1A1A);
+
 /// Brand orange for small text/borders (primary-ink; was purple).
 const Color kPurple = Color(0xFFB8431A);
 

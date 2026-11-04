@@ -5,7 +5,8 @@ import "backend_gateway.dart";
 /// Delivery history: every refresh mirrors the live orders into
 /// `delivery_history`, so a job stays visible after NetSuite closes it.
 class HistoryService {
-  HistoryService({required this.gateway, DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+  HistoryService({required this.gateway, DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now;
 
   final BackendGateway gateway;
   final DateTime Function() _clock;

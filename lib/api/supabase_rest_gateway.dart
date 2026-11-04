@@ -16,7 +16,11 @@ import "backend_gateway.dart";
 /// The Authorization bearer is always the public key, which Supabase's gateway accepts; the
 /// session token is never sent anywhere else.
 class SupabaseRestGateway implements BackendGateway {
-  SupabaseRestGateway({required String baseUrl, required this.anonKey, this.sessionToken, Dio? dio})
+  SupabaseRestGateway(
+      {required String baseUrl,
+      required this.anonKey,
+      this.sessionToken,
+      Dio? dio})
       : baseUrl = baseUrl.replaceAll(RegExp(r"/+$"), ""),
         _dio = dio ??
             Dio(BaseOptions(
@@ -36,7 +40,8 @@ class SupabaseRestGateway implements BackendGateway {
   bool get configured => baseUrl.isNotEmpty && anonKey.isNotEmpty;
 
   /// Public headers: identify the project; read-only power.
-  Map<String, String> _publicHeaders([Map<String, String>? extra]) => <String, String>{
+  Map<String, String> _publicHeaders([Map<String, String>? extra]) =>
+      <String, String>{
         "apikey": anonKey,
         "Authorization": "Bearer " + anonKey,
         ...?extra,
@@ -44,7 +49,8 @@ class SupabaseRestGateway implements BackendGateway {
 
   String _session() {
     final jwt = sessionToken?.call();
-    if (jwt == null || jwt.isEmpty) throw const BackendException(401, "not_signed_in");
+    if (jwt == null || jwt.isEmpty)
+      throw const BackendException(401, "not_signed_in");
     return jwt;
   }
 
@@ -71,7 +77,9 @@ class SupabaseRestGateway implements BackendGateway {
         queryParameters: query,
         options: Options(
           method: method,
-          headers: auth ? _publicHeaders(headers) : <String, String>{"apikey": anonKey, ...?headers},
+          headers: auth
+              ? _publicHeaders(headers)
+              : <String, String>{"apikey": anonKey, ...?headers},
           responseType: ResponseType.json,
           validateStatus: (_) => true,
         ),
@@ -80,17 +88,22 @@ class SupabaseRestGateway implements BackendGateway {
       if (status >= 400) throw BackendException(status, _message(res.data));
       return res;
     } on DioException catch (e) {
-      throw BackendException(e.response?.statusCode ?? 0, e.message ?? "network error");
+      throw BackendException(
+          e.response?.statusCode ?? 0, e.message ?? "network error");
     }
   }
 
   /// One call to the quai-data function: `{op, ...args}` -> the JSON answer.
-  Future<Map<String, dynamic>> _op(String op, [Map<String, dynamic> args = const <String, dynamic>{}]) async {
+  Future<Map<String, dynamic>> _op(String op,
+      [Map<String, dynamic> args = const <String, dynamic>{}]) async {
     final res = await _send(
       "POST",
       "$baseUrl/functions/v1/quai-data",
       data: <String, dynamic>{"op": op, ...args},
-      headers: <String, String>{"Content-Type": "application/json", "X-Quai-Session": _session()},
+      headers: <String, String>{
+        "Content-Type": "application/json",
+        "X-Quai-Session": _session()
+      },
     );
     final d = res.data;
     return d is Map ? d.cast<String, dynamic>() : <String, dynamic>{};
@@ -98,40 +111,50 @@ class SupabaseRestGateway implements BackendGateway {
 
   String _rest(String table) => "$baseUrl/rest/v1/$table";
 
-  List<Map<String, dynamic>> _rows(dynamic data) =>
-      data is List ? data.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList() : <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _rows(dynamic data) => data is List
+      ? data.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList()
+      : <Map<String, dynamic>>[];
 
   // --- announcements ---------------------------------------------------------
 
   /// Public read: the lockdown leaves exactly this (active announcements and their photos).
   @override
   Future<List<Announcement>> activeAnnouncements() async {
-    final posts = _rows((await _send("GET", _rest("announcements"), query: <String, dynamic>{
+    final posts = _rows(
+        (await _send("GET", _rest("announcements"), query: <String, dynamic>{
       "select": "*",
       "is_active": "eq.true",
       "order": "created_at.desc",
     }))
-        .data);
+            .data);
     if (posts.isEmpty) return <Announcement>[];
     // One query for every photo instead of one per announcement.
     final ids = posts.map((p) => p["id"].toString()).join(",");
-    final imgs = _rows((await _send("GET", _rest("announcement_images"), query: <String, dynamic>{
-      "select": "announcement_id,storage_url",
-      "announcement_id": "in.($ids)",
-      "order": "created_at.asc",
-    }))
+    final imgs = _rows((await _send("GET", _rest("announcement_images"),
+            query: <String, dynamic>{
+          "select": "announcement_id,storage_url",
+          "announcement_id": "in.($ids)",
+          "order": "created_at.asc",
+        }))
         .data);
     final byPost = <String, List<String>>{};
     for (final i in imgs) {
-      byPost.putIfAbsent(i["announcement_id"].toString(), () => <String>[]).add(i["storage_url"].toString());
+      byPost
+          .putIfAbsent(i["announcement_id"].toString(), () => <String>[])
+          .add(i["storage_url"].toString());
     }
-    return posts.map((p) => Announcement.fromRow(p, images: byPost[p["id"].toString()] ?? const <String>[])).toList();
+    return posts
+        .map((p) => Announcement.fromRow(p,
+            images: byPost[p["id"].toString()] ?? const <String>[]))
+        .toList();
   }
 
   @override
   Future<String> insertAnnouncement(Map<String, String> row) async {
-    final id = (await _op("announcement.insert", <String, dynamic>{"row": row}))["id"];
-    if (id == null) throw const BackendException(0, "announcement was not created");
+    final id =
+        (await _op("announcement.insert", <String, dynamic>{"row": row}))["id"];
+    if (id == null)
+      throw const BackendException(0, "announcement was not created");
     return id.toString();
   }
 
@@ -146,8 +169,10 @@ class SupabaseRestGateway implements BackendGateway {
   }
 
   @override
-  Future<void> insertAnnouncementImage(String announcementId, String url) async {
-    await _op("announcement.image.add", <String, dynamic>{"announcementId": announcementId, "url": url});
+  Future<void> insertAnnouncementImage(
+      String announcementId, String url) async {
+    await _op("announcement.image.add",
+        <String, dynamic>{"announcementId": announcementId, "url": url});
   }
 
   @override
@@ -157,10 +182,12 @@ class SupabaseRestGateway implements BackendGateway {
 
   // --- storage ---------------------------------------------------------------
 
-  static String _encodePath(String path) => path.split("/").map(Uri.encodeComponent).join("/");
+  static String _encodePath(String path) =>
+      path.split("/").map(Uri.encodeComponent).join("/");
 
   @override
-  String publicUrl(String bucket, String path) => "$baseUrl/storage/v1/object/public/$bucket/${_encodePath(path)}";
+  String publicUrl(String bucket, String path) =>
+      "$baseUrl/storage/v1/object/public/$bucket/${_encodePath(path)}";
 
   /// The bytes go to the function (which checks who you are, the folder, the picture type and
   /// size) and it stores them; no direct storage access exists for the public key.
@@ -188,7 +215,8 @@ class SupabaseRestGateway implements BackendGateway {
   @override
   Future<void> removeFiles(String bucket, List<String> paths) async {
     if (paths.isEmpty) return;
-    await _op("files.remove", <String, dynamic>{"bucket": bucket, "paths": paths});
+    await _op(
+        "files.remove", <String, dynamic>{"bucket": bucket, "paths": paths});
   }
 
   // --- receipts and change reports ------------------------------------------------
@@ -197,10 +225,12 @@ class SupabaseRestGateway implements BackendGateway {
 
   @override
   Future<String?> insertReceipt(Map<String, dynamic> row) async =>
-      (await _op("receipt.insert", <String, dynamic>{"row": row}))["id"]?.toString();
+      (await _op("receipt.insert", <String, dynamic>{"row": row}))["id"]
+          ?.toString();
 
   @override
-  Future<void> markReceiptEmailSent(String id) async {} // done by send-transactional-email
+  Future<void> markReceiptEmailSent(
+      String id) async {} // done by send-transactional-email
 
   @override
   Future<void> insertAdjustment(Map<String, dynamic> row) async {
@@ -208,7 +238,8 @@ class SupabaseRestGateway implements BackendGateway {
   }
 
   @override
-  Future<void> markAdjustmentEmailSent(String id) async {} // done by send-transactional-email
+  Future<void> markAdjustmentEmailSent(
+      String id) async {} // done by send-transactional-email
 
   @override
   Future<EmailOutcome> sendEmail({
@@ -224,10 +255,15 @@ class SupabaseRestGateway implements BackendGateway {
         "idempotencyKey": idempotencyKey,
         "templateData": data,
       },
-      headers: <String, String>{"Content-Type": "application/json", "X-Quai-Session": _session()},
+      headers: <String, String>{
+        "Content-Type": "application/json",
+        "X-Quai-Session": _session()
+      },
     );
     final body = res.data;
-    if (body is Map && body["success"] == false && body["reason"] == "email_suppressed") {
+    if (body is Map &&
+        body["success"] == false &&
+        body["reason"] == "email_suppressed") {
       return EmailOutcome.suppressed;
     }
     return EmailOutcome.sent;
@@ -251,7 +287,8 @@ class SupabaseRestGateway implements BackendGateway {
     final res = await _op("history.list", <String, dynamic>{
       "from": from,
       "to": to,
-      if (carrierNames != null && carrierNames.isNotEmpty) "carrierNames": carrierNames,
+      if (carrierNames != null && carrierNames.isNotEmpty)
+        "carrierNames": carrierNames,
       if (carrierIds != null && carrierIds.isNotEmpty) "carrierIds": carrierIds,
     });
     return _rows(res["rows"]);
@@ -270,7 +307,8 @@ class SupabaseRestGateway implements BackendGateway {
       );
       final data = res.data;
       if (data is Map) {
-        if (data["valid"] == false && data["reason"] == "already_unsubscribed") {
+        if (data["valid"] == false &&
+            data["reason"] == "already_unsubscribed") {
           return UnsubscribeCheck.alreadyUnsubscribed;
         }
         if (data["valid"] == true) return UnsubscribeCheck.valid;
@@ -293,7 +331,8 @@ class SupabaseRestGateway implements BackendGateway {
       final data = res.data;
       if (data is Map) {
         if (data["success"] == true) return UnsubscribeResult.done;
-        if (data["reason"] == "already_unsubscribed") return UnsubscribeResult.alreadyUnsubscribed;
+        if (data["reason"] == "already_unsubscribed")
+          return UnsubscribeResult.alreadyUnsubscribed;
       }
       return UnsubscribeResult.error;
     } on BackendException {

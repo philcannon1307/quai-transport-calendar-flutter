@@ -32,21 +32,28 @@ class MyOrdersScreen extends ConsumerWidget {
                 ButtonSegment<int>(value: 2, label: Text(s.t("cal.biweekly"))),
               ],
               selected: <int>{weeks},
-              onSelectionChanged: (v) => ref.read(upcomingWeeksProvider.notifier).state = v.first,
+              onSelectionChanged: (v) =>
+                  ref.read(upcomingWeeksProvider.notifier).state = v.first,
             ),
           ),
           Expanded(
             child: asyncOrders.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(e.toString(), textAlign: TextAlign.center))),
+              error: (e, _) => Center(
+                  child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(e.toString(), textAlign: TextAlign.center))),
               data: (orders) {
                 final upcoming = orders.where((o) {
                   final d = OrderWindows.parseDate(o.date);
-                  return d != null && OrderWindows.isUpcomingWithin(d, now, weeks);
+                  return d != null &&
+                      OrderWindows.isUpcomingWithin(d, now, weeks);
                 }).toList()
                   ..sort((a, b) => (a.date).compareTo(b.date));
                 if (upcoming.isEmpty) {
-                  return Center(child: Text(s.t("tbl.empty"), style: const TextStyle(color: Colors.black38)));
+                  return Center(
+                      child: Text(s.t("tbl.empty"),
+                          style: const TextStyle(color: Colors.black38)));
                 }
                 return ListView.separated(
                   padding: const EdgeInsets.all(12),
@@ -57,18 +64,26 @@ class MyOrdersScreen extends ConsumerWidget {
                     final d = OrderWindows.parseDate(o.date);
                     return ListTile(
                       tileColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0x14000000))),
-                      title: Text(o.soNum, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: const BorderSide(color: Color(0x14000000))),
+                      title: Text(o.soNum,
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
                       onTap: () => showTicketSheet(context, o.soNum),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Text([o.customer, o.serviceType].where((e) => (e ?? "").isNotEmpty).join(" · ")),
+                          Text([o.customer, o.serviceType]
+                              .where((e) => (e ?? "").isNotEmpty)
+                              .join(" · ")),
                           if (!o.isTransfer)
-                            Padding(padding: const EdgeInsets.only(top: 4), child: ContactLinks(soNum: o.soNum)),
+                            Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: ContactLinks(soNum: o.soNum)),
                         ],
                       ),
-                      trailing: Text(d == null ? "" : fmt.format(d), style: const TextStyle(fontSize: 12)),
+                      trailing: Text(d == null ? "" : fmt.format(d),
+                          style: const TextStyle(fontSize: 12)),
                     );
                   },
                 );

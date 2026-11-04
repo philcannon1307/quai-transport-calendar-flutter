@@ -7,14 +7,16 @@ void main() {
 
     test("adds ?_= when the path has no query", () {
       expect(
-        ApiClient.cacheBustedUrl(base, "/api/ship-calendar/orders", 1730000000000),
+        ApiClient.cacheBustedUrl(
+            base, "/api/ship-calendar/orders", 1730000000000),
         "$base/api/ship-calendar/orders?_=1730000000000",
       );
     });
 
     test("adds &_= when the path already has a query", () {
       expect(
-        ApiClient.cacheBustedUrl(base, "/api/netsuite/events?location=Ste-Agathe", 42),
+        ApiClient.cacheBustedUrl(
+            base, "/api/netsuite/events?location=Ste-Agathe", 42),
         "$base/api/netsuite/events?location=Ste-Agathe&_=42",
       );
     });

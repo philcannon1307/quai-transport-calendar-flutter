@@ -4,13 +4,29 @@ import "package:quai_calendar/data/carriers.dart";
 
 void main() {
   group("retired Gatineau Solution Lac accounts", () {
-    test("excludes the owner and both driver accounts from the active roster", () {
-      expect(kCarriers.where((c) => RegExp("solution lac", caseSensitive: false).hasMatch(c.displayName)).toList(), isEmpty);
-      expect(kCarriers.where((c) => c.group == "Gatineau").map((c) => c.displayName).toList(), <String>["Gat - Sam"]);
+    test("excludes the owner and both driver accounts from the active roster",
+        () {
+      expect(
+          kCarriers
+              .where((c) => RegExp("solution lac", caseSensitive: false)
+                  .hasMatch(c.displayName))
+              .toList(),
+          isEmpty);
+      expect(
+          kCarriers
+              .where((c) => c.group == "Gatineau")
+              .map((c) => c.displayName)
+              .toList(),
+          <String>["Gat - Sam"]);
     });
 
-    for (final name in <String>["Gat - Solution Lac", "Gat - Solution Lac #1", "Gat - Solution Lac #2"]) {
-      test("clears an existing session for $name and saved linked credentials", () {
+    for (final name in <String>[
+      "Gat - Solution Lac",
+      "Gat - Solution Lac #1",
+      "Gat - Solution Lac #2"
+    ]) {
+      test("clears an existing session for $name and saved linked credentials",
+          () {
         final store = MemorySessionStore();
         final session = Session(store);
         store.write(kNameKey, name);

@@ -8,7 +8,8 @@ enum AnnouncementFailure { invalid, notConfigured, save, photo }
 
 class AnnouncementResult {
   const AnnouncementResult.ok({this.photosFailed = 0}) : failure = null;
-  const AnnouncementResult.failed(AnnouncementFailure this.failure) : photosFailed = 0;
+  const AnnouncementResult.failed(AnnouncementFailure this.failure)
+      : photosFailed = 0;
 
   final AnnouncementFailure? failure;
 
@@ -52,8 +53,10 @@ class AnnouncementsService {
     List<NewPhoto> newPhotos = const <NewPhoto>[],
     List<String> removedUrls = const <String>[],
   }) async {
-    if (!draft.isValid) return const AnnouncementResult.failed(AnnouncementFailure.invalid);
-    if (!gateway.configured) return const AnnouncementResult.failed(AnnouncementFailure.notConfigured);
+    if (!draft.isValid)
+      return const AnnouncementResult.failed(AnnouncementFailure.invalid);
+    if (!gateway.configured)
+      return const AnnouncementResult.failed(AnnouncementFailure.notConfigured);
 
     final String id;
     try {
@@ -71,7 +74,10 @@ class AnnouncementsService {
     // leftover file is harmless, a leftover row would show a broken image, so
     // the row is removed even if the file removal failed.
     if (removedUrls.isNotEmpty) {
-      final paths = removedUrls.map((u) => storagePathFromUrl(u, kAnnouncementBucket)).whereType<String>().toList();
+      final paths = removedUrls
+          .map((u) => storagePathFromUrl(u, kAnnouncementBucket))
+          .whereType<String>()
+          .toList();
       try {
         await gateway.removeFiles(kAnnouncementBucket, paths);
       } on BackendException {
@@ -113,7 +119,10 @@ class AnnouncementsService {
   Future<bool> delete(Announcement a) async {
     if (!gateway.configured) return false;
     try {
-      final paths = a.images.map((u) => storagePathFromUrl(u, kAnnouncementBucket)).whereType<String>().toList();
+      final paths = a.images
+          .map((u) => storagePathFromUrl(u, kAnnouncementBucket))
+          .whereType<String>()
+          .toList();
       if (paths.isNotEmpty) {
         try {
           await gateway.removeFiles(kAnnouncementBucket, paths);

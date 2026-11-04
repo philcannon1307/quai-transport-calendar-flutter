@@ -5,7 +5,8 @@ import "package:flutter_riverpod/flutter_riverpod.dart";
 
 /// Builds the in-app PDF view. The real one (pdfrx) is injected from main.dart;
 /// keeping the engine out of this file means widget tests never load a PDF engine.
-typedef TicketPdfBuilder = Widget Function(BuildContext context, Uint8List bytes, String name);
+typedef TicketPdfBuilder = Widget Function(
+    BuildContext context, Uint8List bytes, String name);
 
 /// Print and download of a ticket. The real one (printing) is injected from main.dart.
 abstract class TicketFileActions {
@@ -22,7 +23,9 @@ class NoopTicketFileActions implements TicketFileActions {
 }
 
 final ticketPdfBuilderProvider = Provider<TicketPdfBuilder>(
-  (ref) => (context, bytes, name) => const Center(child: Text("PDF viewer unavailable")),
+  (ref) => (context, bytes, name) =>
+      const Center(child: Text("PDF viewer unavailable")),
 );
 
-final ticketFileActionsProvider = Provider<TicketFileActions>((ref) => const NoopTicketFileActions());
+final ticketFileActionsProvider =
+    Provider<TicketFileActions>((ref) => const NoopTicketFileActions());

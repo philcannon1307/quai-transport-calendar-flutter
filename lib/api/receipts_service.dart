@@ -5,7 +5,14 @@ import "../logic/image_compress.dart";
 import "../logic/receipts_policy.dart";
 import "backend_gateway.dart";
 
-enum ReceiptFailure { noPhoto, noDriver, unreadablePhoto, notConfigured, upload, email }
+enum ReceiptFailure {
+  noPhoto,
+  noDriver,
+  unreadablePhoto,
+  notConfigured,
+  upload,
+  email
+}
 
 class ReceiptResult {
   const ReceiptResult.ok({this.suppressed = false}) : failure = null;
@@ -26,7 +33,10 @@ class ReceiptResult {
 /// The email RECIPIENT is never chosen here: the server-side templates are
 /// fixed to comptabilite@groupeql.com (receipt) and sadm@groupeql.com (BOL).
 class ReceiptsService {
-  ReceiptsService({required this.gateway, DateTime Function()? clock, String Function()? newId})
+  ReceiptsService(
+      {required this.gateway,
+      DateTime Function()? clock,
+      String Function()? newId})
       : _clock = clock ?? DateTime.now,
         _newId = newId ?? newUuid4;
 
@@ -43,9 +53,12 @@ class ReceiptsService {
     required String note,
     required bool bol,
   }) async {
-    if (photo == null) return const ReceiptResult.failed(ReceiptFailure.noPhoto);
-    if (driver.trim().isEmpty) return const ReceiptResult.failed(ReceiptFailure.noDriver);
-    if (!gateway.configured) return const ReceiptResult.failed(ReceiptFailure.notConfigured);
+    if (photo == null)
+      return const ReceiptResult.failed(ReceiptFailure.noPhoto);
+    if (driver.trim().isEmpty)
+      return const ReceiptResult.failed(ReceiptFailure.noDriver);
+    if (!gateway.configured)
+      return const ReceiptResult.failed(ReceiptFailure.notConfigured);
 
     final CompressedImage image;
     try {
@@ -55,7 +68,8 @@ class ReceiptsService {
     }
 
     final now = _clock();
-    final path = "${bol ? "bol/" : ""}${isoDate(now)}/${_newId()}.${image.extension}";
+    final path =
+        "${bol ? "bol/" : ""}${isoDate(now)}/${_newId()}.${image.extension}";
     final String publicUrl;
     try {
       publicUrl = await gateway.uploadFile(
