@@ -39,7 +39,12 @@ export const CARRIERS = [
   },
 ];
 
-export const carrierByName = (name) => CARRIERS.find((c) => c.displayName === name);
+/** Matching key for carrier names: accents, case and repeated spaces never matter ("SADM - Éric" == "sadm - eric"). */
+export const normName = (s) =>
+  String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+export const carrierByName = (name) =>
+  CARRIERS.find((c) => c.displayName === name) ?? CARRIERS.find((c) => normName(c.displayName) === normName(name));
 export const backendUsername = (c) => c.backendUsername ?? c.displayName;
 
 /** Linked trucks the client actually signs in to (Logistique: Gooseneck only). */

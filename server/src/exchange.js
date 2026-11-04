@@ -58,7 +58,7 @@ export function createExchange({ config, jobs, limiters, log }) {
     const carrier = carrierByName(name);
     const entry = carrier ? credentials.get(carrier.displayName) : undefined;
     const known = Boolean(carrier && entry);
-    const bucket = known ? name : "unknown"; // attacker-chosen names must not create unbounded keys
+    const bucket = known ? carrier.displayName : "unknown"; // attacker-chosen names must not create unbounded keys
     const ipKey = ip + "|" + bucket;
 
     const wait = Math.max(limiters.carrierPerIp.retryAfter(ipKey), limiters.carrierGlobal.retryAfter(bucket));
