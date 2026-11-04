@@ -1,0 +1,82 @@
+name: Build web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned: pubspec needs Dart >=3.5; Flutter 3.35 ships Dart 3.9. Bump on purpose, not by accident.
+  FLUTTER_VERSION: "3.35.7"
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter --version
+      - run: flutter pub get
+
+      # Non-blocking: reports findings without failing the build.
+      - name: Analyze
+        run: flutter analyze
+        continue-on-error: true
+
+      - name: Test
+        run: flutter test
+
+      # config/public-config.json holds PUBLIC values only (Railway URLs). No secrets belong in it.
+      - name: Build web
+        run: flutter build web --release --dart-define-from-file=config/public-config.json
+
+      - name: Check the build points at Railway, not Lovable/Supabase
+        run: |
+          set -e
+          grep -rq "up.railway.app" build/web || { echo "Railway URL missing from build"; exit 1; }
+          if grep -rEq "supabase\.co|lovable\.app/functions" build/web; then echo "Old backend URL found in build"; exit 1; fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web
+          retention-days: 14
+          if-no-files-found: error
+
+  # Android stub: disabled (if: false). Unsigned build only; enable when the owner wants it. No iOS yet.
+  android:
+    if: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release --dart-define-from-file=config/public-config.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-unsigned
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 14
