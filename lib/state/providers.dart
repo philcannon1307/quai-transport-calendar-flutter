@@ -167,8 +167,14 @@ class SessionTicketTokens implements TicketTokens {
   @override
   List<String> sadmTruckTokens() {
     if (session.name() != kLogistique) return <String>[];
+    // SADM trucks first (cheap, most likely owners), then the Gooseneck trucks: Logistique loads the
+    // Gooseneck calendars too, so a sales order owned by a Gooseneck truck only opens with THAT token.
     final gooseneck = RegExp("GOOSENECK", caseSensitive: false);
-    return session.linkedTokens().entries.where((e) => !gooseneck.hasMatch(e.key)).map((e) => e.value).toList();
+    final entries = session.linkedTokens().entries.toList();
+    return <String>[
+      ...entries.where((e) => !gooseneck.hasMatch(e.key)).map((e) => e.value),
+      ...entries.where((e) => gooseneck.hasMatch(e.key)).map((e) => e.value),
+    ];
   }
 }
 
