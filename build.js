@@ -91,7 +91,8 @@ stage("pub get", "flutter pub get", 420000, 8);
 stage("analyze", "flutter analyze --no-fatal-infos --no-fatal-warnings", 420000, 80);
 // Tests gate the build: a red test must not deploy.
 testGate();
-stage("build web --release", "flutter build web --release", 900000, 30);
+const CFG = fs.existsSync("config/public-config.json") ? " --dart-define-from-file=config/public-config.json" : "";
+stage("build web --release", "flutter build web --release" + CFG, 900000, 30);
 
 if (!fs.existsSync("build/web/index.html")) {
   console.error("[flutter] build/web contents: " + (fs.existsSync("build/web") ? fs.readdirSync("build/web").join(", ") : "(no build/web)"));

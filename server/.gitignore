@@ -1,3 +1,7 @@
 node_modules
 .env
 .env.local
+# data exports from the old project (PII, unsubscribe tokens, receipts): never commit
+export/
+export-*/
+export-supabase*/

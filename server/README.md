@@ -85,3 +85,41 @@ Tests include an integration suite against a stub of the job service (`test/exch
 ## Keeping it in sync
 
 The roster in `src/roster.js` is a copy of `lib/data/carriers.dart` (display names, groups, truck ids, linked trucks). Change both together; `npm test` fails otherwise.
+
+
+## Data API (replaces Lovable Cloud / Supabase)
+
+The same server now also stores the app's data and sends its emails, so the Lovable Cloud / Supabase
+project is no longer needed (see `output/lovable-exit-map.md`). It stays **off** (answers 503) until
+`DATABASE_URL` is set, so deploying this code changes nothing by itself.
+
+| Path (kept identical to the Supabase ones, so the Flutter app only needs a new `QUAI_BACKEND_URL`) | What |
+|---|---|
+| `POST /functions/v1/quai-data` | JSON `{op, ...}`: announcement.*, files.remove, receipt.insert, adjustment.insert, history.upsert, history.list. `?op=upload&bucket=&path=` with the raw picture uploads a file (8 MB, jpeg/png/webp, magic bytes checked). Needs the session token (`X-Quai-Session`). |
+| `POST /functions/v1/send-transactional-email` | `receipt-uploaded`, `bol-uploaded`, `order-adjustment`. Recipients are derived on the server from the stored row and must be @groupeql.com; 20 per hour per carrier; idempotency key; suppression list. |
+| `GET\|POST /functions/v1/handle-email-unsubscribe` | Unsubscribe page backend (token is the credential). |
+| `GET /rest/v1/announcements`, `GET /rest/v1/announcement_images` | Public read of active announcements. |
+| `GET /storage/v1/object/public/<bucket>/<path>` | Public pictures (buckets `receipts`, `announcement-images`), served with `nosniff` and a sandbox CSP. |
+
+**Variables:** `DATABASE_URL`, `PUBLIC_BASE_URL`, `PUBLIC_SITE_URL`, `EMAIL_PROVIDER` (resend | sendgrid | log), `EMAIL_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` (see `.env.example`). With `EMAIL_PROVIDER=log` nothing is sent.
+
+**Migration (owner approval needed for each step against production):**
+1. Add a PostgreSQL service in Railway; set the variables above on this service.
+2. `npm run db:schema` (creates the tables; `-- --dry-run` prints the SQL only).
+3. Export the old project BEFORE locking it down: `SUPABASE_URL=... SUPABASE_KEY=... npm run db:export -- ./export` (GET requests only; key from the environment, never printed).
+4. `NEW_BASE_URL=<PUBLIC_BASE_URL> DATABASE_URL=... npm run db:import -- ./export --dry-run`, then without `--dry-run` (one transaction, safe to repeat; picture links are rewritten to this server).
+5. Deploy this server, then build the Flutter app (`config/public-config.json` already points `QUAI_BACKEND_URL` at this server).
+6. Only then apply `output/supabase-lockdown.sql` to the old project, and retire it.
+
+Pictures are stored in Postgres (table `files`), so one database backup covers everything.
+
+
+### Hardening notes (review of PR #4)
+
+* **History rows are owned.** `history.upsert` replaces an existing `delivery_history` row only when that row already carries one of the caller's names (SuperUser: any row). A carrier cannot overwrite or take over another carrier's delivery.
+* **Upload quota.** Pictures are stored in Postgres, so each login (SuperUser excepted) may upload 60 files / 150 MB per hour, and one IP 30 uploads per minute (`UPLOAD_MAX_*`). The server logs `storage_alarm` when the total passes `STORAGE_ALARM_MB`. Run `npm run db:schema` again after upgrading (adds `files.uploaded_by` and the unique email-key index; both are idempotent).
+* **CORS.** The data routes answer only the origins in `ALLOWED_ORIGINS`. The single wildcard is `GET /storage/v1/object/public/...` (public pictures).
+* **Emails.** Each send is claimed atomically (unique idempotency key + per-carrier lock, 20 per hour), so concurrent retries cannot send twice. An email for a receipt without a log row is accepted only for a picture uploaded by the same login. `List-Unsubscribe` points at this server with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
+* **Heads-up (inherited behaviour):** unsubscribing `sadm@` or `comptabilite@` silences that inbox for everyone who relies on it. Sessions cannot be revoked before they expire (12 h by default): rotate `SESSION_JWT_SECRET` to end all sessions at once.
+* **Postgres TLS** is verified by default (see `.env.example`). `DATA_STORE=memory` is refused in production.
+* **Exports.** `export/`, `export-*/` are git-ignored: they hold personal data, unsubscribe tokens and receipts.
