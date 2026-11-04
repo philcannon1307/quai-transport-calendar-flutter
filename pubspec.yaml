@@ -28,6 +28,9 @@ dependencies:
   # Receipt/BOL/announcement photos: pure-Dart resize+JPEG re-encode, and camera/gallery.
   image: ^4.2.0
   image_picker: ^1.1.2
+  # Ember on ink design: fonts (Inter Tight / Newsreader / JetBrains Mono) and the SVG wordmark.
+  google_fonts: ^6.2.1
+  flutter_svg: ^2.0.10+1
 
 dev_dependencies:
   flutter_test:
@@ -39,3 +42,5 @@ flutter:
   assets:
     - lib/l10n/app_fr.arb
     - lib/l10n/app_en.arb
+    - assets/lafantaisie-logo-white.svg
+    - assets/lafantaisie-logo-black.svg

@@ -1,23 +1,127 @@
 import "package:flutter/material.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
-import "package:intl/intl.dart";
 
+import "../api/orders_repository.dart";
+import "../api/session.dart";
+import "../data/carriers.dart";
 import "../i18n/i18n.dart";
 import "../logic/calendar_views.dart";
+import "../logic/calendar_week.dart";
+import "../logic/delivery_history.dart";
 import "../logic/order_windows.dart";
 import "../models/order.dart";
+import "../state/calendar_state.dart";
 import "../state/providers.dart";
-import "../theme.dart";
-import "../data/carriers.dart";
-import "../widgets/contact_links.dart";
-import "../widgets/logistique_tabs.dart";
-import "../logic/delivery_history.dart";
-import "../widgets/adjustment_sheet.dart";
+import "../theme/quai_tokens.dart";
 import "../widgets/announcement_banner.dart";
 import "../widgets/bilingual.dart";
+import "../widgets/brand_header.dart";
+import "../widgets/calendar_common.dart";
+import "../widgets/logistique_tabs.dart";
+import "../widgets/order_card.dart";
 import "../widgets/receipt_sheet.dart";
-import "../api/session.dart";
-import "ticket_sheet.dart";
+import "calendar_wide.dart";
+
+/// Everything a calendar layout needs, computed once per build.
+class CalendarModel {
+  CalendarModel({
+    required this.strings,
+    required this.carrierName,
+    required this.isLogistique,
+    required this.view,
+    required this.load,
+    required this.all,
+    required this.shown,
+    required this.merged,
+    required this.now,
+    required this.weekOffset,
+    required this.picked,
+    required this.span,
+  })  : today = OrderWindows.businessDate(now),
+        byDay = ordersByDay(merged) {
+    final m = mondayOf(today);
+    weekStart = DateTime(m.year, m.month, m.day + 7 * weekOffset);
+    selected = effectiveSelectedDay(picked: picked, weekStart: weekStart, today: today);
+  }
+
+  final Strings strings;
+  final String carrierName;
+  final bool isLogistique;
+  final CalendarViewKind view;
+  final OrdersLoad? load;
+  final List<Order> all;
+  final List<Order> shown;
+  final List<Order> merged;
+  final DateTime now;
+  final int weekOffset;
+  final DateTime? picked;
+  final int span;
+  final DateTime today;
+  final Map<DateTime, List<Order>> byDay;
+  late final DateTime weekStart;
+  late final DateTime selected;
+
+  List<Order> ordersOn(DateTime d) => sortedForDay(byDay[dateOnly(d)] ?? const <Order>[]);
+
+  List<Order> ordersInRange(DateTime start, int days) => <Order>[for (final d in daysFrom(start, days)) ...(byDay[d] ?? const <Order>[])];
+}
+
+void shiftWeek(WidgetRef ref, int delta) {
+  final off = ref.read(weekOffsetProvider) + delta;
+  ref.read(weekOffsetProvider.notifier).state = off;
+  ref.read(pickedDayProvider.notifier).state = null;
+  if (off < 0) {
+    // Past weeks need delivery history; widen the range just enough.
+    final needed = -off * 7 + 7;
+    final want = needed <= 7 ? 7 : (needed <= 30 ? 30 : 365);
+    if (ref.read(historyDaysProvider) < want) ref.read(historyDaysProvider.notifier).state = want;
+  }
+}
+
+void goToday(WidgetRef ref) {
+  ref.read(weekOffsetProvider.notifier).state = 0;
+  ref.read(pickedDayProvider.notifier).state = null;
+}
+
+Future<void> signOutAndLeave(BuildContext context, WidgetRef ref) async {
+  signOutNow(ref);
+  await ref.read(urlLauncherProvider)(Uri.parse(kLogoutUrl));
+  if (context.mounted) Navigator.of(context).pushNamedAndRemoveUntil("/", (_) => false);
+}
+
+/// Warnings above the calendar (expired session, unavailable sources).
+List<Widget> calendarBanners(CalendarModel m) {
+  final load = m.load;
+  final failed = load?.failedTrucks ?? const <String>[];
+  return <Widget>[
+    const AnnouncementBanner(),
+    if (load?.unauthorized ?? false) const MemoBanner(text: "Session expirée — reconnectez-vous. / Session expired — sign in again."),
+    if (m.isLogistique && m.view == CalendarViewKind.pickups && (load?.middlewareUnavailable ?? false))
+      const MemoBanner(
+        text: "Ramassages indisponibles : la connexion à l'intergiciel n'est pas configurée. / "
+            "Pick-ups unavailable: the middleware connection is not configured.",
+      ),
+    if (failed.isNotEmpty)
+      MemoBanner(
+        text: "Certains camions n'ont pas pu être chargés : ${failed.join(", ")} / "
+            "Some trucks could not be loaded: ${failed.join(", ")}",
+      ),
+  ];
+}
+
+/// Service families present in a list, for the legend.
+List<ServiceKind> legendKinds(CalendarModel m) {
+  final kinds = <ServiceKind>[ServiceKind.install, ServiceKind.delivery];
+  if (m.isLogistique && m.view == CalendarViewKind.pickups) kinds.add(ServiceKind.pickup);
+  if (m.isLogistique && m.view == CalendarViewKind.transfers) kinds.add(ServiceKind.transfer);
+  if (!m.isLogistique) {
+    final present = m.shown.map(serviceKindOf).toSet();
+    for (final k in <ServiceKind>[ServiceKind.pickup, ServiceKind.transfer]) {
+      if (present.contains(k)) kinds.add(k);
+    }
+  }
+  return kinds;
+}
 
 class CalendarScreen extends ConsumerWidget {
   const CalendarScreen({super.key});
@@ -25,288 +129,349 @@ class CalendarScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = StringsScope.of(context);
-    final span = ref.watch(spanDaysProvider);
     final asyncOrders = ref.watch(ordersProvider);
     final now = DateTime.now();
-    final isLogistique = ref.watch(currentCarrierProvider) == kLogistique;
+    final carrierName = ref.watch(currentCarrierProvider);
+    final isLogistique = carrierName == kLogistique;
     final view = ref.watch(logistiqueViewProvider);
     final load = ref.watch(ordersLoadProvider).valueOrNull;
-    final carrierName = ref.watch(currentCarrierProvider);
-    final receipt = receiptButtonFor(carrierName, isSuperUser: ref.watch(sessionProvider).isSuperUser);
-    final historyDays = ref.watch(historyDaysProvider);
     final past = ref.watch(pastOrdersProvider).valueOrNull ?? const <Order>[];
 
+    CalendarModel? model;
+    final orders = asyncOrders.valueOrNull;
+    if (orders != null) {
+      final shown = isLogistique ? orders.where((o) => calendarView(o) == view).toList() : orders;
+      model = CalendarModel(
+        strings: s,
+        carrierName: carrierName ?? "",
+        isLogistique: isLogistique,
+        view: view,
+        load: load,
+        all: orders,
+        shown: shown,
+        merged: mergeLiveAndPast(shown, isLogistique ? past.where((o) => calendarView(o) == view).toList() : past),
+        now: now,
+        weekOffset: ref.watch(weekOffsetProvider),
+        picked: ref.watch(pickedDayProvider),
+        span: ref.watch(spanDaysProvider),
+      );
+    }
+    final status = asyncOrders.isLoading && model == null
+        ? const Center(child: CircularProgressIndicator())
+        : (asyncOrders.hasError && model == null ? CalMessage(text: asyncOrders.error.toString()) : null);
+
+    return LayoutBuilder(builder: (context, box) {
+      final wide = box.maxWidth >= QuaiBreakpoints.phone;
+      if (wide) return WideCalendar(model: model, status: status, width: box.maxWidth);
+      return _PhoneCalendar(model: model, status: status, carrierName: carrierName ?? "");
+    });
+  }
+}
+
+// ------------------------------------------------------------------ phone
+
+class _PhoneCalendar extends ConsumerWidget {
+  const _PhoneCalendar({required this.model, required this.status, required this.carrierName});
+  final CalendarModel? model;
+  final Widget? status;
+  final String carrierName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.q;
+    final s = StringsScope.of(context);
+    final m = model;
+    final total = m?.all.length ?? 0;
+    final filtered = m?.shown.length ?? 0;
+    final rentals = m == null ? 0 : m.ordersInRange(m.weekStart, 7).where(isRental).length;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(s.t("brand.name")),
-        actions: <Widget>[
-          if (receipt.show)
-            IconButton(
-              key: const Key("receipt-button"),
-              tooltip: s.t(receipt.bol ? "bol.button" : "receipts.button"),
-              icon: Icon(receipt.bol ? Icons.local_shipping_outlined : Icons.receipt_long_outlined),
-              onPressed: () => showReceiptSheet(context, bol: receipt.bol),
+      backgroundColor: c.bg,
+      body: Column(children: <Widget>[
+        SizedBox(
+          height: 150 + 62 - 38,
+          child: Stack(children: <Widget>[
+            BrandHeader(
+              height: 150,
+              padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 12, 20, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                Row(children: <Widget>[const BrandLogo(width: 124), const Spacer(), const LangToggle()]),
+                const SizedBox(height: 10),
+                Text(carrierName, key: const Key("unit-name"), maxLines: 1, overflow: TextOverflow.ellipsis, style: quaiSans(Colors.white, size: 17, height: 22, weight: FontWeight.w700)),
+              ]),
             ),
-          IconButton(
-            tooltip: s.t("dash.myOrders"),
-            icon: const Icon(Icons.assignment_outlined),
-            onPressed: () => Navigator.of(context).pushNamed("/my-orders"),
-          ),
-          IconButton(
-            key: const Key("logout-button"),
-            tooltip: s.t("common.logout"),
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              signOutNow(ref);
-              await ref.read(urlLauncherProvider)(Uri.parse(kLogoutUrl));
-              if (context.mounted) Navigator.of(context).pushNamedAndRemoveUntil("/", (_) => false);
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: <Widget>[
-          const AnnouncementBanner(),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: <Widget>[
-                SegmentedButton<int>(
-                  segments: <ButtonSegment<int>>[
-                    ButtonSegment<int>(value: 7, label: Text(s.t("cal.weekly"))),
-                    ButtonSegment<int>(value: 14, label: Text(s.t("cal.biweekly"))),
-                  ],
-                  selected: <int>{span},
-                  onSelectionChanged: (v) => ref.read(spanDaysProvider.notifier).state = v.first,
-                ),
+            Positioned(
+              left: 16,
+              right: 16,
+              top: 112,
+              child: Row(children: <Widget>[
+                Expanded(child: KpiTile(label: s.t("dash.orders"), value: "$total")),
                 const SizedBox(width: 10),
-                DropdownButton<int>(
-                  key: const Key("history-range"),
-                  value: historyDays,
-                  underline: const SizedBox.shrink(),
-                  items: <DropdownMenuItem<int>>[
-                    for (final d in kHistoryRanges)
-                      DropdownMenuItem<int>(
-                        value: d,
-                        child: Text(d == 0 ? bi(s, "Historique", "History") : "${bi(s, "Passé", "Past")} $d ${bi(s, "j", "d")}"),
-                      ),
-                  ],
-                  onChanged: (v) => ref.read(historyDaysProvider.notifier).state = v ?? 0,
-                ),
-              ],
+                Expanded(child: KpiTile(label: s.t("dash.filtered"), value: "$filtered", active: true)),
+                const SizedBox(width: 10),
+                Expanded(child: KpiTile(label: s.t("dash.locations"), value: "$rentals")),
+              ]),
             ),
-          ),
-          Expanded(
-            child: asyncOrders.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => _Message(text: e.toString()),
-              data: (orders) {
-                final shown = isLogistique ? orders.where((o) => calendarView(o) == view).toList() : orders;
-                final failed = load?.failedTrucks ?? const <String>[];
-                return Column(
-                  children: <Widget>[
-                    if (isLogistique)
-                      LogistiqueTabs(
-                        selected: view,
-                        orders: orders,
-                        onChanged: (v) => ref.read(logistiqueViewProvider.notifier).state = v,
-                      ),
-                    if (load?.unauthorized ?? false)
-                      const _Banner(text: "Session expirée — reconnectez-vous. / Session expired — sign in again."),
-                    if (isLogistique && view == CalendarViewKind.pickups && (load?.middlewareUnavailable ?? false))
-                      const _Banner(
-                        text: "Ramassages indisponibles : la connexion à l'intergiciel n'est pas configurée. / "
-                            "Pick-ups unavailable: the middleware connection is not configured.",
-                      ),
-                    if (failed.isNotEmpty)
-                      _Banner(
-                        text: "Certains camions n'ont pas pu être chargés : ${failed.join(", ")} / "
-                            "Some trucks could not be loaded: ${failed.join(", ")}",
-                      ),
-                    Expanded(
-                      child: _DayStack(
-                        days: <DateTime>[..._pastDays(past, now), ...OrderWindows.days(now, span)],
-                        orders: mergeLiveAndPast(shown, isLogistique ? past.where((o) => calendarView(o) == view).toList() : past),
-                        now: now,
-                        strings: s,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
+          ]),
+        ),
+        Expanded(child: m == null ? (status ?? const SizedBox.shrink()) : _PhoneBody(m: m)),
+        const _QuaiBottomNav(),
+      ]),
+    );
+  }
+}
+
+class _PhoneBody extends ConsumerWidget {
+  const _PhoneBody({required this.m});
+  final CalendarModel m;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.q;
+    final s = m.strings;
+    final fmt = CalFmt(s);
+    final weekDays = daysFrom(m.weekStart, 7);
+    final weekOrders = m.ordersInRange(m.weekStart, 7);
+    final selectedOrders = m.ordersOn(m.selected);
+    final others = <DateTime>[for (final d in weekDays) if (!sameDay(d, m.selected) && (m.byDay[d]?.isNotEmpty ?? false)) d];
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: <Widget>[
+        ...calendarBanners(m),
+        if (m.isLogistique) ...<Widget>[
+          LogistiqueTabs(selected: m.view, orders: m.all, onChanged: (v) => ref.read(logistiqueViewProvider.notifier).state = v),
+          const SizedBox(height: 12),
         ],
+        Row(children: <Widget>[
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+              Text(fmt.range(weekDays.first, weekDays.last), key: const Key("week-range"), style: quaiSans(c.ink, size: 20, height: 26, weight: FontWeight.w700)),
+              Text("${bi(s, "Vue hebdomadaire", "Weekly view")} · ${fmt.count(weekOrders.length)}", style: quaiSans(c.sub, size: 13, height: 18)),
+            ]),
+          ),
+          CircleNavButton(buttonKey: const Key("week-prev"), icon: Icons.chevron_left, tooltip: s.t("cal.prev"), onTap: () => shiftWeek(ref, -1)),
+          const SizedBox(width: 8),
+          PillButton(buttonKey: const Key("week-today"), label: bi(s, "Auj.", "Today"), onTap: () => goToday(ref)),
+          const SizedBox(width: 8),
+          CircleNavButton(buttonKey: const Key("week-next"), icon: Icons.chevron_right, tooltip: s.t("cal.next"), onTap: () => shiftWeek(ref, 1)),
+        ]),
+        const SizedBox(height: 14),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragEnd: (d) {
+            final v = d.primaryVelocity ?? 0;
+            if (v < -200) shiftWeek(ref, 1);
+            if (v > 200) shiftWeek(ref, -1);
+          },
+          child: Row(children: <Widget>[
+            for (final d in weekDays)
+              Expanded(child: _StripDay(day: d, orders: m.byDay[d] ?? const <Order>[], selected: sameDay(d, m.selected), today: sameDay(d, m.today), fmt: fmt)),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        ServiceLegend(kinds: legendKinds(m)),
+        const SizedBox(height: 16),
+        Row(children: <Widget>[
+          Expanded(child: Text(fmt.dayLong(m.selected), key: const Key("selected-day"), style: quaiSans(c.ink, size: 17, height: 22, weight: FontWeight.w700))),
+          Text(fmt.count(selectedOrders.length), style: quaiSans(c.sub, size: 13)),
+        ]),
+        const SizedBox(height: 10),
+        if (selectedOrders.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(s.t("tbl.emptyDate"), style: quaiSerif(c.sub, size: 15)),
+          )
+        else
+          for (final o in selectedOrders) OrderCard(order: o, now: m.now),
+        for (final d in others) _CollapsedDay(key: ValueKey<DateTime>(d), day: d, orders: m.ordersOn(d), now: m.now, fmt: fmt),
+      ],
+    );
+  }
+}
+
+/// One day of the strip: caps day name, bold number, up to 3 service dots. Selected = orange pill; today = orange dot.
+class _StripDay extends ConsumerWidget {
+  const _StripDay({required this.day, required this.orders, required this.selected, required this.today, required this.fmt});
+  final DateTime day;
+  final List<Order> orders;
+  final bool selected;
+  final bool today;
+  final CalFmt fmt;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.q;
+    final dots = orders.take(3).map(serviceKindOf).toList();
+    return GestureDetector(
+      key: Key("strip-${day.day}"),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => ref.read(pickedDayProvider.notifier).state = day,
+      child: Container(
+        height: 70,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(color: selected ? c.primary : Colors.transparent, borderRadius: BorderRadius.circular(QuaiRadius.lg)),
+        child: Stack(children: <Widget>[
+          Column(mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
+            Text(fmt.dow(day), style: quaiSans(selected ? c.onPrimary : c.sub, size: 10.5, height: 12, weight: FontWeight.w700, ls: .6)),
+            const SizedBox(height: 4),
+            Text("${day.day}", style: quaiSans(selected ? c.onPrimary : c.ink, size: 18, height: 22, weight: FontWeight.w700)),
+            const SizedBox(height: 5),
+            SizedBox(
+              height: 6,
+              child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                for (final k in dots)
+                  Container(margin: const EdgeInsets.symmetric(horizontal: 1.5), width: 6, height: 6, decoration: BoxDecoration(color: selected ? c.onPrimary : serviceColor(c, k), shape: BoxShape.circle)),
+              ]),
+            ),
+          ]),
+          if (today)
+            Positioned(top: 5, right: 6, child: Container(key: const Key("today-dot"), width: 6, height: 6, decoration: BoxDecoration(color: selected ? c.onPrimary : c.primary, shape: BoxShape.circle))),
+        ]),
       ),
     );
   }
 }
 
-/// Mobile-first vertical stack: one section per day, cards underneath.
-class _DayStack extends StatelessWidget {
-  const _DayStack({required this.days, required this.orders, required this.now, required this.strings});
-  final List<DateTime> days;
+/// Collapsed row for another day of the week; taps expand it in place (no horizontal scroll anywhere).
+class _CollapsedDay extends StatefulWidget {
+  const _CollapsedDay({super.key, required this.day, required this.orders, required this.now, required this.fmt});
+  final DateTime day;
   final List<Order> orders;
   final DateTime now;
-  final Strings strings;
+  final CalFmt fmt;
 
   @override
-  Widget build(BuildContext context) {
-    final fmt = DateFormat.MMMEd(strings.isFrench ? "fr_CA" : "en_CA");
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-      itemCount: days.length,
-      itemBuilder: (context, i) {
-        final day = days[i];
-        final dayOrders = orders.where((o) {
-          final d = OrderWindows.parseDate(o.date);
-          return d != null && d.year == day.year && d.month == day.month && d.day == day.day;
-        }).toList();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Padding(
-              padding: const EdgeInsets.only(top: 14, bottom: 6),
-              child: Text(fmt.format(day), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-            ),
-            if (dayOrders.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(strings.t("tbl.emptyDate"), style: const TextStyle(color: Colors.black38, fontSize: 12)),
-              )
-            else
-              ...dayOrders.map((o) => _OrderCard(order: o, now: now, strings: strings)),
-          ],
-        );
-      },
-    );
-  }
+  State<_CollapsedDay> createState() => _CollapsedDayState();
 }
 
-class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.order, required this.now, required this.strings});
-  final Order order;
-  final DateTime now;
-  final Strings strings;
-
-  Color _accent() {
-    final d = OrderWindows.parseDate(order.date);
-    if (d != null && OrderWindows.isPast(d, now)) return CardPalette.past;
-    switch (calendarView(order)) {
-      case CalendarViewKind.transfers:
-        return CardPalette.transfers;
-      case CalendarViewKind.pickups:
-        return CardPalette.pickups;
-      case CalendarViewKind.delivInst:
-        return CardPalette.delivInst;
-    }
-  }
+class _CollapsedDayState extends State<_CollapsedDay> {
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
-    final accent = _accent();
-    final isPast = accent == CardPalette.past;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: isPast ? const Color(0xFFFDECEC) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isPast ? CardPalette.past.withValues(alpha: 0.5) : const Color(0x14000000)),
-      ),
-      // IntrinsicHeight: lets the accent stripe match the card's height without
-      // CrossAxisAlignment.stretch, which has no bounded height here.
-      child: InkWell(
-        key: Key("card-${order.soNum}"),
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => showTicketSheet(context, order.soNum),
-        child: IntrinsicHeight(
-        child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Container(width: 5, decoration: BoxDecoration(color: accent, borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)))),
-          Expanded(
+    final c = context.q;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: <Widget>[
+        Material(
+          color: c.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(QuaiRadius.md), side: BorderSide(color: c.line)),
+          child: InkWell(
+            key: Key("other-day-${widget.day.day}"),
+            customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(QuaiRadius.md)),
+            onTap: () => setState(() => _open = !_open),
             child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Row(
-                    children: <Widget>[
-                      Expanded(child: Text(order.soNum, style: const TextStyle(fontWeight: FontWeight.w700))),
-                      InkWell(
-                        key: Key("report-${order.soNum}"),
-                        onTap: () => showAdjustmentSheet(context, order),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          child: Row(children: <Widget>[
-                            const Icon(Icons.flag_outlined, size: 14, color: Colors.black54),
-                            const SizedBox(width: 3),
-                            Text(bi(strings, "Signaler", "Report"), style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                          ]),
-                        ),
-                      ),
-                      if (order.isTransfer)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: CardPalette.transfers.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-                          child: const Text("TO", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-                        ),
-                    ],
-                  ),
-                  if ((order.customer ?? "").isNotEmpty)
-                    Padding(padding: const EdgeInsets.only(top: 2), child: Text(order.customer!, style: const TextStyle(fontSize: 13))),
-                  if ((order.serviceType ?? "").isNotEmpty)
-                    Padding(padding: const EdgeInsets.only(top: 2), child: Text(order.serviceType!, style: const TextStyle(fontSize: 11, color: Colors.black54))),
-                  if (!order.isTransfer)
-                    Padding(padding: const EdgeInsets.only(top: 6), child: ContactLinks(soNum: order.soNum)),
-                ],
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              child: Row(children: <Widget>[
+                Text(widget.fmt.dayShort(widget.day), style: quaiSans(c.ink, size: 15, weight: FontWeight.w700)),
+                const Spacer(),
+                Flexible(child: Text(widget.fmt.countWithCancelled(widget.orders), overflow: TextOverflow.ellipsis, style: quaiSans(c.sub, size: 13))),
+                const SizedBox(width: 6),
+                Icon(_open ? Icons.expand_less : Icons.chevron_right, size: 18, color: c.faint),
+              ]),
             ),
           ),
-        ],
-      ),
-      ),
-      ),
+        ),
+        if (_open) ...<Widget>[const SizedBox(height: 10), for (final o in widget.orders) OrderCard(order: o, now: widget.now)],
+      ]),
     );
   }
 }
 
-class _Banner extends StatelessWidget {
-  const _Banner({required this.text});
-  final String text;
+// ------------------------------------------------------------------ bottom nav + account sheet
+
+class _QuaiBottomNav extends ConsumerWidget {
+  const _QuaiBottomNav();
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFF4E5),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFF5C27A)),
-        ),
-        child: Text(text, style: const TextStyle(fontSize: 12)),
-      );
-}
-
-class _Message extends StatelessWidget {
-  const _Message({required this.text});
-  final String text;
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(padding: const EdgeInsets.all(24), child: Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Colors.black54))),
-      );
-}
-
-/// Days (oldest first) that have at least one past delivery, strictly before today.
-List<DateTime> _pastDays(List<Order> past, DateTime now) {
-  final today = DateTime(now.year, now.month, now.day);
-  final seen = <DateTime>{};
-  for (final o in past) {
-    final d = OrderWindows.parseDate(o.date);
-    if (d == null) continue;
-    final day = DateTime(d.year, d.month, d.day);
-    if (day.isBefore(today)) seen.add(day);
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.q;
+    final s = StringsScope.of(context);
+    Widget item(String keyName, IconData icon, String label, bool active, VoidCallback onTap) => Expanded(
+          child: GestureDetector(
+            key: Key(keyName),
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
+              Container(
+                width: 56,
+                height: 32,
+                decoration: BoxDecoration(color: active ? c.primarySoft : Colors.transparent, borderRadius: BorderRadius.circular(QuaiRadius.full)),
+                child: Icon(icon, size: 22, color: active ? c.primaryInk : c.sub),
+              ),
+              const SizedBox(height: 4),
+              Text(label, style: quaiSans(active ? c.primaryInk : c.sub, size: 12, height: 16, weight: FontWeight.w700)),
+            ]),
+          ),
+        );
+    return Container(
+      height: QuaiSpace.bottomNav - 20 + MediaQuery.of(context).padding.bottom,
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+      decoration: BoxDecoration(color: c.surface, border: Border(top: BorderSide(color: c.line))),
+      child: Row(children: <Widget>[
+        item("nav-calendar", Icons.calendar_view_week_outlined, bi(s, "Calendrier", "Calendar"), true, () {}),
+        item("nav-orders", Icons.view_list_outlined, bi(s, "Commandes", "Orders"), false, () => Navigator.of(context).pushNamed("/my-orders")),
+        item("nav-account", Icons.person_outline, bi(s, "Compte", "Account"), false, () => showAccountSheet(context, ref)),
+      ]),
+    );
   }
-  return seen.toList()..sort();
+}
+
+/// Compte: refresh, receipts / BOL, history range and sign-out (they no longer live in the header on phone).
+Future<void> showAccountSheet(BuildContext context, WidgetRef ref) {
+  final c = context.q;
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: c.surface,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(QuaiRadius.sheet))),
+    builder: (sheetContext) => Consumer(builder: (ctx, ref2, _) {
+      final s = StringsScope.of(ctx);
+      final name = ref2.watch(currentCarrierProvider);
+      final receipt = receiptButtonFor(name, isSuperUser: ref2.watch(sessionProvider).isSuperUser);
+      final history = ref2.watch(historyDaysProvider);
+      Widget tile(String key, IconData icon, String label, VoidCallback onTap) => ListTile(
+            key: Key(key),
+            leading: Icon(icon, color: c.ink),
+            title: Text(label, style: quaiSans(c.ink, size: 15, weight: FontWeight.w700)),
+            onTap: onTap,
+          );
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+          child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+            Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8), child: Align(alignment: Alignment.centerLeft, child: Text(name ?? "", style: quaiSans(c.sub, size: 13)))),
+            tile("account-refresh", Icons.refresh, s.t("common.refresh"), () {
+              Navigator.of(sheetContext).pop();
+              ref.invalidate(ordersLoadProvider);
+            }),
+            if (receipt.show)
+              tile("receipt-button", receipt.bol ? Icons.local_shipping_outlined : Icons.receipt_long_outlined, s.t(receipt.bol ? "bol.button" : "receipts.button"), () {
+                Navigator.of(sheetContext).pop();
+                showReceiptSheet(context, bol: receipt.bol);
+              }),
+            ListTile(
+              leading: Icon(Icons.history, color: c.ink),
+              title: Text(bi(s, "Historique", "History"), style: quaiSans(c.ink, size: 15, weight: FontWeight.w700)),
+              trailing: DropdownButton<int>(
+                key: const Key("history-range"),
+                value: history,
+                underline: const SizedBox.shrink(),
+                items: <DropdownMenuItem<int>>[
+                  for (final d in kHistoryRanges)
+                    DropdownMenuItem<int>(value: d, child: Text(d == 0 ? bi(s, "Aucun", "None") : "${bi(s, "Passé", "Past")} $d ${bi(s, "j", "d")}")),
+                ],
+                onChanged: (v) => ref.read(historyDaysProvider.notifier).state = v ?? 0,
+              ),
+            ),
+            tile("logout-button", Icons.logout, s.t("common.logout"), () {
+              Navigator.of(sheetContext).pop();
+              signOutAndLeave(context, ref);
+            }),
+          ]),
+        ),
+      );
+    }),
+  );
 }
