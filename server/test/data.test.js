@@ -578,3 +578,41 @@ test("nit: data exports are git-ignored", async () => {
   assert.match(gi, /^export\/$/m);
   assert.match(gi, /^export-\*\/$/m);
 });
+
+test("pending sweep: a claim left 'pending' by a crash expires after 10 minutes and the retry sends", async () => {
+  const app = await boot();
+  try {
+    const { id, path } = await seedReceipt(app, GAT());
+    const data = { kind: "receipt", receiptId: id, storagePath: path };
+    // simulate a crash: a claim exists for this key and was never finished
+    const keyed = (k) => k + ":comptabilite@groupeql.com";
+    const first = await app.store.claimSend({ message_id: "m1", template_name: "receipt-uploaded", recipient_email: "comptabilite@groupeql.com", status: "pending", metadata: { idempotency_key: keyed("crash"), carrier: "Gat - Sam" } },
+      { key: keyed("crash"), carrier: "Gat - Sam", limit: 20, sinceIso: "2000-01-01T00:00:00Z" });
+    assert.equal(first.state, "claimed");
+    // fresh pending: retry is a duplicate, nothing sent
+    const r1 = await mail(app, GAT(), { templateName: "receipt-uploaded", idempotencyKey: "crash", templateData: data });
+    assert.equal(app.sent.length, 0);
+    assert.equal((await r1.json()).duplicate, true);
+    // 11 minutes later
+    app.store.sendLog.find((l) => l.id === first.id).created_at = new Date(Date.now() - 11 * 60_000).toISOString();
+    const r2 = await mail(app, GAT(), { templateName: "receipt-uploaded", idempotencyKey: "crash", templateData: data });
+    assert.equal(r2.status, 200);
+    assert.equal(app.sent.length, 1, "retry sent");
+    const old = app.store.sendLog.find((l) => l.id === first.id);
+    assert.equal(old.status, "failed");
+    assert.equal(old.error_message, "stale_pending");
+  } finally { await app.close(); }
+});
+
+test("pending sweep (SQL): claimSend expires stale pending rows inside the locked transaction", async () => {
+  const { PgStore } = await import("../src/data/store-pg.js");
+  const stmts = [];
+  const client = { query: async (text, params) => { stmts.push({ text, params }); if (/count\(\*\)/.test(text)) return { rows: [{ n: 0 }], rowCount: 1 }; if (/^insert/.test(text)) return { rows: [{ id: "x" }], rowCount: 1 }; return { rows: [], rowCount: 0 }; }, release() {} };
+  const s = new PgStore({ connect: async () => client, query: async () => ({ rows: [], rowCount: 0 }) });
+  await s.claimSend({ message_id: "m", template_name: "t", recipient_email: "a@groupeql.com", status: "pending", metadata: {} },
+    { key: "k", carrier: "C", limit: 20, sinceIso: "2026-01-01T00:00:00Z", staleBeforeIso: "2026-01-01T00:50:00Z" });
+  const upd = stmts.findIndex((x) => /^update email_send_log set status = 'failed', error_message = 'stale_pending' where status = 'pending' and created_at < \$1/.test(x.text));
+  assert.ok(upd > stmts.findIndex((x) => /pg_advisory_xact_lock/.test(x.text)), "after the lock");
+  assert.ok(upd < stmts.findIndex((x) => /^insert/.test(x.text)), "before the insert");
+  assert.deepEqual(stmts[upd].params, ["2026-01-01T00:50:00Z"]);
+});

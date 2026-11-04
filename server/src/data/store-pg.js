@@ -109,11 +109,13 @@ export class PgStore {
    * Atomic claim of one send: per-carrier advisory lock, hourly count, then insert-first against the unique
    * index on the idempotency key (pending/sent rows). -> { state: 'claimed', id } | { state: 'duplicate' } | { state: 'throttled' }
    */
-  async claimSend(rec, { key, carrier, limit, sinceIso }) {
+  async claimSend(rec, { key, carrier, limit, sinceIso, staleBeforeIso }) {
     const c = await this.pool.connect();
     try {
       await c.query("begin");
       await c.query("select pg_advisory_xact_lock(hashtext($1))", [carrier]);
+      // crash between claim and send: an old 'pending' row expires so it neither blocks retries nor counts toward the cap
+      if (staleBeforeIso) await c.query("update email_send_log set status = 'failed', error_message = 'stale_pending' where status = 'pending' and created_at < $1", [staleBeforeIso]);
       const n = (await c.query("select count(*)::int as n from email_send_log where metadata->>'carrier' = $1 and status in ('pending','sent') and created_at >= $2", [carrier, sinceIso])).rows[0].n;
       if (n >= limit) { await c.query("rollback"); return { state: "throttled" }; }
       const r = await c.query("insert into email_send_log (message_id, template_name, recipient_email, status, error_message, metadata) values ($1,$2,$3,$4,$5,$6::jsonb) on conflict ((metadata->>'idempotency_key')) where status in ('pending','sent') do nothing returning id",

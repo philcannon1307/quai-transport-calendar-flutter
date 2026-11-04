@@ -12,7 +12,7 @@ if (process.argv.includes("--dry-run")) {
 }
 if (!process.env.DATABASE_URL) { console.error("DATABASE_URL is required."); process.exit(1); }
 const { default: pg } = await import("pg");
-const local = /railway\.internal|localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL);
-const client = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: local ? undefined : { rejectUnauthorized: false } });
+const { pgSsl } = await import("../src/data/pg-config.js");
+const client = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: pgSsl(process.env.DATABASE_URL) });
 await client.connect();
 try { await client.query(sql); console.log("schema applied"); } finally { await client.end(); }

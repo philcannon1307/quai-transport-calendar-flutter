@@ -10,6 +10,8 @@ import { HttpError } from "./handler.js";
 
 const TZ = "America/Toronto";
 export const HOURLY_LIMIT = 20;
+// A claim still 'pending' after this long means the server died between claim and send: it expires to 'failed' so a retry can go through.
+export const STALE_PENDING_MS = 10 * 60_000;
 const SITE = "Groupe QL — Transport";
 
 export const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -160,6 +162,7 @@ export async function sendTransactional({ body, session, store, provider, baseUr
   if (!idempotencyKey || idempotencyKey.length > 120) return { status: 400, body: { error: "idempotencyKey_required" } };
 
   const since = new Date(Date.now() - 3600_000).toISOString();
+  const staleBefore = new Date(Date.now() - STALE_PENDING_MS).toISOString();
 
   const job = await buildJob(templateName, input, session, store, baseUrl);
   if (job.recipients.length === 0 || !job.recipients.every(isGroupeQl)) throw new HttpError(422, "recipient_not_allowed");
@@ -175,7 +178,7 @@ export async function sendTransactional({ body, session, store, provider, baseUr
     // Insert-first: the claim is atomic (unique key + per-carrier lock), so concurrent retries cannot both send.
     const claim = await store.claimSend(
       { message_id: messageId, template_name: templateName, recipient_email: to, status: "pending", metadata: meta },
-      { key, carrier: session.carrier, limit: HOURLY_LIMIT, sinceIso: since },
+      { key, carrier: session.carrier, limit: HOURLY_LIMIT, sinceIso: since, staleBeforeIso: staleBefore },
     );
     if (claim.state === "duplicate") { duplicates++; continue; }
     if (claim.state === "throttled") { throttled = true; break; }

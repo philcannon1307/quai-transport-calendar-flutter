@@ -98,7 +98,8 @@ export class MemoryStore {
     return this.sendLog.filter((l) => l.metadata.carrier === carrier && ["pending", "sent"].includes(l.status) && l.created_at >= sinceIso).length;
   }
   /** Atomic (no await between the checks and the insert): claims one send or says duplicate / throttled. */
-  async claimSend(rec, { key, carrier, limit, sinceIso }) {
+  async claimSend(rec, { key, carrier, limit, sinceIso, staleBeforeIso }) {
+    if (staleBeforeIso) for (const l of this.sendLog) if (l.status === "pending" && l.created_at < staleBeforeIso) { l.status = "failed"; l.error_message = "stale_pending"; }
     if (this.sendLog.some((l) => l.metadata.idempotency_key === key && ["pending", "sent"].includes(l.status))) return { state: "duplicate" };
     if (this.sendLog.filter((l) => l.metadata.carrier === carrier && ["pending", "sent"].includes(l.status) && l.created_at >= sinceIso).length >= limit) return { state: "throttled" };
     const r = { id: randomUUID(), created_at: new Date().toISOString(), ...rec };
