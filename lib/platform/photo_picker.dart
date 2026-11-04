@@ -27,4 +27,5 @@ class UnavailablePhotoPicker implements PhotoPicker {
   Future<List<PickedPhoto>> pickMany() async => <PickedPhoto>[];
 }
 
-final photoPickerProvider = Provider<PhotoPicker>((ref) => const UnavailablePhotoPicker());
+final photoPickerProvider =
+    Provider<PhotoPicker>((ref) => const UnavailablePhotoPicker());

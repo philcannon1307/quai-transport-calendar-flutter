@@ -18,7 +18,8 @@ class Strings {
   static const List<Locale> supported = <Locale>[Locale("fr"), Locale("en")];
 
   /// Build a dictionary directly, for widget tests (no asset bundle needed).
-  factory Strings.forTests(Map<String, String> arbValues, {Locale locale = const Locale("fr")}) =>
+  factory Strings.forTests(Map<String, String> arbValues,
+          {Locale locale = const Locale("fr")}) =>
       Strings(locale, arbValues);
 
   static Future<Strings> load(Locale locale) async {
@@ -32,7 +33,8 @@ class Strings {
     return Strings(locale, values);
   }
 
-  static String _unescapeIcu(String v) => v.replaceAll("'{'", "{").replaceAll("'}'", "}");
+  static String _unescapeIcu(String v) =>
+      v.replaceAll("'{'", "{").replaceAll("'}'", "}");
 
   /// Translate an original dotted key, e.g. t("login.title").
   String t(String dottedKey) {
@@ -57,6 +59,8 @@ class StringsScope extends InheritedWidget {
     assert(s != null, "StringsScope missing");
     return s!.strings;
   }
+
   @override
-  bool updateShouldNotify(StringsScope old) => old.strings.locale != strings.locale;
+  bool updateShouldNotify(StringsScope old) =>
+      old.strings.locale != strings.locale;
 }

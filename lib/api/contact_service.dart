@@ -35,13 +35,15 @@ class ContactService {
   final PdfTextExtractor extractor;
   final KeyValueStore store;
   final ConcurrencyLimiter limiter;
-  final Map<String, Future<OrderContact?>> _pending = <String, Future<OrderContact?>>{};
+  final Map<String, Future<OrderContact?>> _pending =
+      <String, Future<OrderContact?>>{};
 
   Future<OrderContact?> contactFor(String soNum) {
     final cached = store.read("$keyPrefix$soNum");
     if (cached != null) {
       try {
-        return Future<OrderContact?>.value(OrderContact.fromJson(jsonDecode(cached) as Map<String, dynamic>));
+        return Future<OrderContact?>.value(
+            OrderContact.fromJson(jsonDecode(cached) as Map<String, dynamic>));
       } catch (_) {
         // corrupt cache entry: fall through and re-extract
       }

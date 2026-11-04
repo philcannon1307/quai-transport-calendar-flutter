@@ -25,8 +25,9 @@ class QuaiApp extends ConsumerWidget {
     // previous one. This guarantees exactly ONE MaterialApp for the app's
     // lifetime, so the Navigator keeps the route the URL asked for.
     final asyncStrings = ref.watch(stringsProvider);
-    final Strings strings =
-        asyncStrings.hasValue ? asyncStrings.requireValue : ref.watch(preloadedStringsProvider);
+    final Strings strings = asyncStrings.hasValue
+        ? asyncStrings.requireValue
+        : ref.watch(preloadedStringsProvider);
 
     return StringsScope(
       strings: strings,
@@ -44,7 +45,8 @@ class QuaiApp extends ConsumerWidget {
         // ONE route table (onGenerateRoute) so the URL the browser opened is honoured
         // for known paths and an unknown path shows the NotFound screen instead of
         // silently falling back to another page.
-        onGenerateInitialRoutes: (String initial) => <Route<dynamic>>[_routeFor(RouteSettings(name: initial))],
+        onGenerateInitialRoutes: (String initial) =>
+            <Route<dynamic>>[_routeFor(RouteSettings(name: initial))],
         onGenerateRoute: _routeFor,
         onUnknownRoute: _routeFor,
       ),
@@ -52,12 +54,12 @@ class QuaiApp extends ConsumerWidget {
   }
 }
 
-
 /// Path of a route name, without query, hash leftovers or a trailing slash.
 String routePath(String? name) {
   final raw = (name == null || name.isEmpty) ? "/" : name;
   var path = Uri.tryParse(raw)?.path ?? raw;
-  if (path.length > 1 && path.endsWith("/")) path = path.substring(0, path.length - 1);
+  if (path.length > 1 && path.endsWith("/"))
+    path = path.substring(0, path.length - 1);
   return path.isEmpty ? "/" : path;
 }
 
@@ -75,7 +77,8 @@ Route<dynamic> _routeFor(RouteSettings settings) {
     case "/admin":
       page = const AdminScreen();
     case "/unsubscribe":
-      page = UnsubscribeScreen(token: unsubscribeToken(routeName: name, pageUri: Uri.base));
+      page = UnsubscribeScreen(
+          token: unsubscribeToken(routeName: name, pageUri: Uri.base));
     default:
       page = const NotFoundScreen();
   }

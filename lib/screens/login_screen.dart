@@ -33,7 +33,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _submit(Strings s) async {
     final name = _carrier;
     if (name == null) return; // button is disabled until a unit is chosen
-    if (_code.text.trim().length != 6) return; // ...and until the 6-digit code is complete
+    if (_code.text.trim().length != 6)
+      return; // ...and until the 6-digit code is complete
     setState(() {
       _busy = true;
       _error = null;
@@ -41,14 +42,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final Carrier? carrier = carrierByDisplayName(name);
       if (carrier == null) throw Exception("unknown carrier");
-      final res = await ref.read(authServiceProvider).signIn(carrier: carrier, code: _code.text.trim());
+      final res = await ref
+          .read(authServiceProvider)
+          .signIn(carrier: carrier, code: _code.text.trim());
       ref.read(sessionProvider).signIn(
-        token: res.primaryToken,
-        name: name,
-        linkedTokens: res.linkedTokens,
-        role: res.role,
-        sessionToken: res.sessionToken,
-      );
+            token: res.primaryToken,
+            name: name,
+            linkedTokens: res.linkedTokens,
+            role: res.role,
+            sessionToken: res.sessionToken,
+          );
       ref.read(sessionExpiredProvider.notifier).state = false;
       ref.read(currentCarrierProvider.notifier).state = name;
       if (mounted) Navigator.of(context).pushReplacementNamed("/calendar");
@@ -66,7 +69,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       isScrollControlled: true,
       backgroundColor: c.surface,
       showDragHandle: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(QuaiRadius.sheet))),
+      shape: const RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(QuaiRadius.sheet))),
       builder: (_) => _UnitSheet(selected: _carrier),
     );
     if (picked != null && mounted) setState(() => _carrier = picked);
@@ -85,22 +90,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Text(s.t("login.title"), key: const Key("login-title"), style: quaiSans(c.ink, size: 28, height: 34, weight: FontWeight.w700)),
+        Text(s.t("login.title"),
+            key: const Key("login-title"),
+            style:
+                quaiSans(c.ink, size: 28, height: 34, weight: FontWeight.w700)),
         const SizedBox(height: 6),
-        Text(s.t("login.subtitle"), style: quaiSans(c.sub, size: 15, height: 21)),
+        Text(s.t("login.subtitle"),
+            style: quaiSans(c.sub, size: 15, height: 21)),
         const SizedBox(height: 22),
         if (ref.watch(sessionExpiredProvider)) ...<Widget>[
           Container(
             key: const Key("session-expired"),
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: c.memoBg, borderRadius: BorderRadius.circular(QuaiRadius.sm), border: Border(left: BorderSide(color: c.memoRail, width: 4))),
-            child: Text(bi(s, "Session expirée — reconnectez-vous.", "Session expired — sign in again."), style: quaiSans(c.ink, size: 13)),
+            decoration: BoxDecoration(
+                color: c.memoBg,
+                borderRadius: BorderRadius.circular(QuaiRadius.sm),
+                border: Border(left: BorderSide(color: c.memoRail, width: 4))),
+            child: Text(
+                bi(s, "Session expirée — reconnectez-vous.",
+                    "Session expired — sign in again."),
+                style: quaiSans(c.ink, size: 13)),
           ),
           const SizedBox(height: 14),
         ],
         _FieldLabel(s.t("login.unit")),
         const SizedBox(height: 6),
-        _UnitField(value: _carrier, placeholder: s.t("login.unitPlaceholder"), onTap: () => _pickUnit(context), onSelected: (v) => setState(() => _carrier = v), wide: wide),
+        _UnitField(
+            value: _carrier,
+            placeholder: s.t("login.unitPlaceholder"),
+            onTap: () => _pickUnit(context),
+            onSelected: (v) => setState(() => _carrier = v),
+            wide: wide),
         const SizedBox(height: 16),
         _FieldLabel(s.t("login.password")),
         const SizedBox(height: 6),
@@ -118,14 +138,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             hintStyle: quaiSans(c.faint, size: 15),
             counterText: "",
             constraints: const BoxConstraints(minHeight: 52),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             suffixIcon: IconButton(
               key: const Key("login-eye"),
               tooltip: s.t("login.password"),
-              icon: Icon(_showCode ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: c.faint),
+              icon: Icon(
+                  _showCode
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  color: c.faint),
               onPressed: () => setState(() => _showCode = !_showCode),
             ),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(QuaiRadius.md), borderSide: BorderSide(color: c.primary, width: 2)),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(QuaiRadius.md),
+                borderSide: BorderSide(color: c.primary, width: 2)),
           ),
         ),
         if (_error != null) ...<Widget>[
@@ -133,8 +160,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Container(
             key: const Key("login-error"),
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: c.cancelledBg, borderRadius: BorderRadius.circular(QuaiRadius.sm)),
-            child: Text(_error!, style: quaiSans(c.cancelled, size: 12.5, height: 17)),
+            decoration: BoxDecoration(
+                color: c.cancelledBg,
+                borderRadius: BorderRadius.circular(QuaiRadius.sm)),
+            child: Text(_error!,
+                style: quaiSans(c.cancelled, size: 12.5, height: 17)),
           ),
         ],
         const SizedBox(height: 22),
@@ -149,34 +179,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: TextButton(
             key: const Key("login-admin-link"),
             onPressed: () => Navigator.of(context).pushNamed("/admin"),
-            child: Text(s.t("login.admin"), style: quaiSans(c.primaryInk, size: 15, weight: FontWeight.w700)),
+            child: Text(s.t("login.admin"),
+                style:
+                    quaiSans(c.primaryInk, size: 15, weight: FontWeight.w700)),
           ),
         ),
       ],
     );
 
-    final hero = _Hero(compact: keyboard && !wide, tagline: bi(s, "Calendrier de livraison", "Delivery calendar"));
+    final hero = _Hero(
+        compact: keyboard && !wide,
+        tagline: bi(s, "Calendrier de livraison", "Delivery calendar"));
 
     if (wide) {
       return Scaffold(
         backgroundColor: c.header,
         body: Stack(children: <Widget>[
           Positioned.fill(child: BrandHeader(child: const SizedBox.expand())),
-          Positioned(top: 16, right: 24, child: SafeArea(child: const LangToggle())),
+          Positioned(
+              top: 16, right: 24, child: SafeArea(child: const LangToggle())),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 440),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
+                  child:
+                      Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
                     const BrandLogo(width: 250),
                     const SizedBox(height: 10),
-                    Text(bi(s, "Calendrier de livraison", "Delivery calendar"), style: quaiSerif(c.headerSub, size: 16)),
+                    Text(bi(s, "Calendrier de livraison", "Delivery calendar"),
+                        style: quaiSerif(c.headerSub, size: 16)),
                     const SizedBox(height: 28),
                     Container(
                       padding: const EdgeInsets.all(28),
-                      decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(QuaiRadius.sheet - 4), boxShadow: quaiShadow(c, level: 2)),
+                      decoration: BoxDecoration(
+                          color: c.surface,
+                          borderRadius:
+                              BorderRadius.circular(QuaiRadius.sheet - 4),
+                          boxShadow: quaiShadow(c, level: 2)),
                       child: form,
                     ),
                   ]),
@@ -193,18 +234,34 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       backgroundColor: c.surface,
       resizeToAvoidBottomInset: true,
       body: Stack(children: <Widget>[
-        Positioned(top: 0, left: 0, right: 0, height: keyboard ? 160 : 460, child: hero),
+        Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: keyboard ? 160 : 460,
+            child: hero),
         Positioned.fill(
           top: keyboard ? 130 : 370,
           child: Container(
-            decoration: BoxDecoration(color: c.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(32))),
+            decoration: BoxDecoration(
+                color: c.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(32))),
             child: SafeArea(
               top: false,
-              child: SingleChildScrollView(padding: const EdgeInsets.fromLTRB(28, 32, 28, 24), child: form),
+              child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+                  child: form),
             ),
           ),
         ),
-        Positioned(top: 0, right: 20, child: SafeArea(child: Padding(padding: const EdgeInsets.only(top: 8), child: const LangToggle()))),
+        Positioned(
+            top: 0,
+            right: 20,
+            child: SafeArea(
+                child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: const LangToggle()))),
       ]),
     );
   }
@@ -228,7 +285,9 @@ class _Hero extends StatelessWidget {
             child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
               const BrandLogo(width: 250),
               const SizedBox(height: 8),
-              Text(tagline, key: const Key("login-tagline"), style: quaiSerif(c.headerSub, size: 13)),
+              Text(tagline,
+                  key: const Key("login-tagline"),
+                  style: quaiSerif(c.headerSub, size: 13)),
             ]),
           ),
         ),
@@ -241,12 +300,19 @@ class _FieldLabel extends StatelessWidget {
   const _FieldLabel(this.text);
   final String text;
   @override
-  Widget build(BuildContext context) => Text(text, style: quaiSans(context.q.ink, size: 13.5, height: 18, weight: FontWeight.w700));
+  Widget build(BuildContext context) => Text(text,
+      style: quaiSans(context.q.ink,
+          size: 13.5, height: 18, weight: FontWeight.w700));
 }
 
 /// Unit field: a bottom-sheet list on phone, an inline menu on wide screens.
 class _UnitField extends StatelessWidget {
-  const _UnitField({required this.value, required this.placeholder, required this.onTap, required this.onSelected, required this.wide});
+  const _UnitField(
+      {required this.value,
+      required this.placeholder,
+      required this.onTap,
+      required this.onSelected,
+      required this.wide});
   final String? value;
   final String placeholder;
   final VoidCallback onTap;
@@ -263,10 +329,18 @@ class _UnitField extends StatelessWidget {
       child: Container(
         height: 52,
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(color: c.field, borderRadius: BorderRadius.circular(QuaiRadius.md), border: Border.all(color: c.line)),
+        decoration: BoxDecoration(
+            color: c.field,
+            borderRadius: BorderRadius.circular(QuaiRadius.md),
+            border: Border.all(color: c.line)),
         child: Row(children: <Widget>[
           Expanded(
-            child: Text(value ?? placeholder, maxLines: 1, overflow: TextOverflow.ellipsis, style: quaiSans(value == null ? c.faint : c.ink, size: 16, weight: value == null ? FontWeight.w500 : FontWeight.w600)),
+            child: Text(value ?? placeholder,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: quaiSans(value == null ? c.faint : c.ink,
+                    size: 16,
+                    weight: value == null ? FontWeight.w500 : FontWeight.w600)),
           ),
           Icon(Icons.arrow_drop_down, color: c.primaryInk),
         ]),
@@ -274,12 +348,18 @@ class _UnitField extends StatelessWidget {
     );
     if (!wide) return field;
     return MenuAnchor(
-      style: MenuStyle(backgroundColor: WidgetStatePropertyAll<Color>(c.surface), maximumSize: const WidgetStatePropertyAll<Size>(Size(384, 360))),
+      style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll<Color>(c.surface),
+          maximumSize: const WidgetStatePropertyAll<Size>(Size(384, 360))),
       menuChildren: <Widget>[
         SizedBox(
           width: 384,
           height: 340,
-          child: _UnitList(selected: value, onSelected: onSelected, closeOnPick: false, afterPick: () {}),
+          child: _UnitList(
+              selected: value,
+              onSelected: onSelected,
+              closeOnPick: false,
+              afterPick: () {}),
         ),
       ],
       builder: (context, controller, _) => InkWell(
@@ -300,14 +380,22 @@ class _UnitSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: MediaQuery.of(context).size.height * 0.75,
-      child: _UnitList(selected: selected, onSelected: (v) => Navigator.of(context).pop(v), closeOnPick: true, afterPick: () {}),
+      child: _UnitList(
+          selected: selected,
+          onSelected: (v) => Navigator.of(context).pop(v),
+          closeOnPick: true,
+          afterPick: () {}),
     );
   }
 }
 
 /// Searchable, grouped list of units.
 class _UnitList extends StatefulWidget {
-  const _UnitList({required this.selected, required this.onSelected, required this.closeOnPick, required this.afterPick});
+  const _UnitList(
+      {required this.selected,
+      required this.onSelected,
+      required this.closeOnPick,
+      required this.afterPick});
   final String? selected;
   final ValueChanged<String> onSelected;
   final bool closeOnPick;
@@ -326,19 +414,29 @@ class _UnitListState extends State<_UnitList> {
     final q = _q.trim().toLowerCase();
     final children = <Widget>[];
     groups.forEach((group, list) {
-      final items = list.where((e) => q.isEmpty || e.displayName.toLowerCase().contains(q) || group.toLowerCase().contains(q)).toList();
+      final items = list
+          .where((e) =>
+              q.isEmpty ||
+              e.displayName.toLowerCase().contains(q) ||
+              group.toLowerCase().contains(q))
+          .toList();
       if (items.isEmpty) return;
       children.add(Padding(
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-        child: Text(group.toUpperCase(), style: quaiSans(c.sub, size: 10.5, height: 12, weight: FontWeight.w700, ls: .8)),
+        child: Text(group.toUpperCase(),
+            style: quaiSans(c.sub,
+                size: 10.5, height: 12, weight: FontWeight.w700, ls: .8)),
       ));
       for (final e in items) {
         final sel = e.displayName == widget.selected;
         children.add(ListTile(
           key: Key("unit-${e.displayName}"),
           dense: true,
-          title: Text(e.displayName, style: quaiSans(c.ink, size: 15.5, weight: sel ? FontWeight.w700 : FontWeight.w500)),
-          trailing: sel ? Icon(Icons.check, color: c.primaryInk, size: 20) : null,
+          title: Text(e.displayName,
+              style: quaiSans(c.ink,
+                  size: 15.5, weight: sel ? FontWeight.w700 : FontWeight.w500)),
+          trailing:
+              sel ? Icon(Icons.check, color: c.primaryInk, size: 20) : null,
           tileColor: sel ? c.primarySoft : null,
           onTap: () {
             widget.onSelected(e.displayName);
@@ -368,7 +466,11 @@ class _UnitListState extends State<_UnitList> {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({super.key, required this.label, required this.busy, required this.onPressed});
+  const _PrimaryButton(
+      {super.key,
+      required this.label,
+      required this.busy,
+      required this.onPressed});
   final String label;
   final bool busy;
   final VoidCallback? onPressed;
@@ -385,7 +487,13 @@ class _PrimaryButton extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         color: bg,
-        boxShadow: enabled || busy ? <BoxShadow>[BoxShadow(color: c.primaryInk.withValues(alpha: .9), offset: const Offset(0, 2))] : null,
+        boxShadow: enabled || busy
+            ? <BoxShadow>[
+                BoxShadow(
+                    color: c.primaryInk.withValues(alpha: .9),
+                    offset: const Offset(0, 2))
+              ]
+            : null,
       ),
       child: Material(
         type: MaterialType.transparency,
@@ -394,8 +502,13 @@ class _PrimaryButton extends StatelessWidget {
           onTap: onPressed,
           child: Center(
             child: busy
-                ? SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: c.onPrimary))
-                : Text(label, style: quaiSans(fg, size: 17, weight: FontWeight.w700)),
+                ? SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.5, color: c.onPrimary))
+                : Text(label,
+                    style: quaiSans(fg, size: 17, weight: FontWeight.w700)),
           ),
         ),
       ),

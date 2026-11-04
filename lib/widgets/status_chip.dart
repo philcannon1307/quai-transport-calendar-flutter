@@ -29,7 +29,8 @@ class StatusChip extends StatelessWidget {
     return Container(
       key: Key("status-${status.name}"),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(QuaiRadius.full)),
+      decoration: BoxDecoration(
+          color: bg, borderRadius: BorderRadius.circular(QuaiRadius.full)),
       child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
         Container(
           key: Key(isHollow ? "dot-hollow" : "dot-filled"),
@@ -42,7 +43,9 @@ class StatusChip extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 5),
-        Text((label ?? s.t(key)).toUpperCase(), style: quaiSans(fg, size: 10, height: 12, weight: FontWeight.w700, ls: .4)),
+        Text((label ?? s.t(key)).toUpperCase(),
+            style: quaiSans(fg,
+                size: 10, height: 12, weight: FontWeight.w700, ls: .4)),
       ]),
     );
   }

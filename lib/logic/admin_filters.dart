@@ -8,12 +8,16 @@ class LocationRef {
 }
 
 /// calendar name -> carrier group (SADM, Gatineau, Gooseneck, ...).
-Map<String, String> carrierGroupMap() => <String, String>{for (final c in kCarriers) c.displayName: c.group};
+Map<String, String> carrierGroupMap() =>
+    <String, String>{for (final c in kCarriers) c.displayName: c.group};
 
 /// Distinct groups in roster order.
 List<String> allGroups() {
   final seen = <String>{};
-  return <String>[for (final c in kCarriers) if (seen.add(c.group)) c.group];
+  return <String>[
+    for (final c in kCarriers)
+      if (seen.add(c.group)) c.group
+  ];
 }
 
 /// Orders per group (orders from a carrier with no group are not counted).
@@ -31,7 +35,9 @@ Map<String, int> groupCounts(List<Order> orders) {
 List<Order> filterByGroup(List<Order> orders, String? group) {
   if (group == null) return orders;
   final map = carrierGroupMap();
-  return orders.where((o) => o.carrierName != null && map[o.carrierName] == group).toList();
+  return orders
+      .where((o) => o.carrierName != null && map[o.carrierName] == group)
+      .toList();
 }
 
 /// Orders per shipping location id (orders with no location are not counted).
@@ -56,7 +62,9 @@ List<LocationRef> locationsOf(List<Order> orders) {
     if (id == null || name == null || name.isEmpty) continue;
     seen.putIfAbsent(id, () => name);
   }
-  return <LocationRef>[for (final e in seen.entries) LocationRef(e.key, e.value)];
+  return <LocationRef>[
+    for (final e in seen.entries) LocationRef(e.key, e.value)
+  ];
 }
 
 List<Order> filterByLocation(List<Order> orders, int? locationId) {
@@ -65,7 +73,8 @@ List<Order> filterByLocation(List<Order> orders, int? locationId) {
 }
 
 /// Pills to show: those with orders (or currently selected), busiest first.
-List<T> visibleSorted<T>(List<T> items, int Function(T) count, bool Function(T) isSelected) {
+List<T> visibleSorted<T>(
+    List<T> items, int Function(T) count, bool Function(T) isSelected) {
   final shown = items.where((i) => count(i) > 0 || isSelected(i)).toList();
   shown.sort((a, b) => count(b).compareTo(count(a)));
   return shown;

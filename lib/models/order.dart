@@ -82,10 +82,13 @@ class Order {
       );
 
   static String? _s(dynamic v) => v == null ? null : v.toString();
-  static int? _i(dynamic v) => v is int ? v : (v is num ? v.toInt() : int.tryParse(v?.toString() ?? ""));
+  static int? _i(dynamic v) =>
+      v is int ? v : (v is num ? v.toInt() : int.tryParse(v?.toString() ?? ""));
 
   /// Sales order from /api/ship-calendar/orders.
-  factory Order.fromShipCalendar(Map<String, dynamic> j, {String? carrierName}) => Order(
+  factory Order.fromShipCalendar(Map<String, dynamic> j,
+          {String? carrierName}) =>
+      Order(
         kind: OrderKind.order,
         soNum: _s(j["soNum"]) ?? "",
         soId: _i(j["soId"]),
@@ -123,7 +126,8 @@ class Order {
       customer: "$from → $to",
       serviceTypeId: null,
       serviceType: "Transfert / Transfer",
-      status: raw.replaceFirst(RegExp(r"^Transfer Order\s*:\s*", caseSensitive: false), ""),
+      status: raw.replaceFirst(
+          RegExp(r"^Transfer Order\s*:\s*", caseSensitive: false), ""),
       eventStatus: _s(j["eventStatus"]) ?? "",
       shipDate: _s(j["date"]),
       city: _s(j["toLocationName"]),
@@ -146,4 +150,5 @@ class Order {
 }
 
 /// TO numbers look like TO12345.
-bool isTransferNum(String? num) => RegExp(r"^TO\d+$", caseSensitive: false).hasMatch((num ?? "").trim());
+bool isTransferNum(String? num) =>
+    RegExp(r"^TO\d+$", caseSensitive: false).hasMatch((num ?? "").trim());

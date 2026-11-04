@@ -7,10 +7,11 @@ class OrderContact {
 
   bool get isEmpty => phone == null && address == null;
 
-  Map<String, dynamic> toJson() => <String, dynamic>{"phone": phone, "address": address};
+  Map<String, dynamic> toJson() =>
+      <String, dynamic>{"phone": phone, "address": address};
 
-  factory OrderContact.fromJson(Map<String, dynamic> j) =>
-      OrderContact(phone: j["phone"] as String?, address: j["address"] as String?);
+  factory OrderContact.fromJson(Map<String, dynamic> j) => OrderContact(
+      phone: j["phone"] as String?, address: j["address"] as String?);
 
   String encode() => jsonEncode(toJson());
 }
@@ -38,7 +39,8 @@ OrderContact parseContact(List<String> lines, String soNum) {
   if (clientIdx >= 0 && phoneIdx > clientIdx) {
     final block = clean
         .sublist(clientIdx + 1, phoneIdx)
-        .where((l) => l.toUpperCase() != soNum.toUpperCase() && !clientRe.hasMatch(l))
+        .where((l) =>
+            l.toUpperCase() != soNum.toUpperCase() && !clientRe.hasMatch(l))
         .toList();
     final addr = block.skip(1).toList();
     if (addr.isNotEmpty) address = addr.join(", ");
@@ -46,7 +48,8 @@ OrderContact parseContact(List<String> lines, String soNum) {
   return OrderContact(phone: phone, address: address);
 }
 
-String telHref(String phone) => "tel:${phone.replaceAll(RegExp(r"[^\d+]"), "")}";
+String telHref(String phone) =>
+    "tel:${phone.replaceAll(RegExp(r"[^\d+]"), "")}";
 
 String mapsHref(String address) =>
     "https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(address)}";

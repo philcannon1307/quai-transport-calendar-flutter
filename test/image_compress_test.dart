@@ -23,7 +23,8 @@ void main() {
     final out = compressForUpload(_noisy(2400, 1800));
     expect(out.width, lessThanOrEqualTo(kMaxImageSide));
     expect(out.height, lessThanOrEqualTo(kMaxImageSide));
-    expect(out.width / out.height, closeTo(2400 / 1800, 0.02), reason: "aspect ratio kept");
+    expect(out.width / out.height, closeTo(2400 / 1800, 0.02),
+        reason: "aspect ratio kept");
     expect(out.bytes.length, lessThanOrEqualTo(kMaxImageBytes));
     expect(out.withinBudget, isTrue);
     // really a JPEG
@@ -43,12 +44,16 @@ void main() {
     expect(out.height, 100);
   });
 
-  test("garbage bytes raise ImageCompressException instead of uploading junk", () {
-    expect(() => compressForUpload(Uint8List.fromList(<int>[1, 2, 3, 4])), throwsA(isA<ImageCompressException>()));
-    expect(() => compressForUpload(Uint8List(0)), throwsA(isA<ImageCompressException>()));
+  test("garbage bytes raise ImageCompressException instead of uploading junk",
+      () {
+    expect(() => compressForUpload(Uint8List.fromList(<int>[1, 2, 3, 4])),
+        throwsA(isA<ImageCompressException>()));
+    expect(() => compressForUpload(Uint8List(0)),
+        throwsA(isA<ImageCompressException>()));
   });
 
-  test("an impossible budget still returns an image and says it is over budget", () {
+  test("an impossible budget still returns an image and says it is over budget",
+      () {
     final out = compressForUpload(_noisy(800, 800), maxBytes: 200);
     expect(out.withinBudget, isFalse);
     expect(out.bytes, isNotEmpty);

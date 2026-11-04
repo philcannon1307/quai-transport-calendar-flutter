@@ -13,7 +13,8 @@ void main() {
         .allMatches(keyMap)
         .map((m) => m.group(1)!)
         .toSet();
-    expect(available.length, greaterThan(100), reason: "dictionary failed to parse");
+    expect(available.length, greaterThan(100),
+        reason: "dictionary failed to parse");
 
     final used = <String, List<String>>{};
     for (final entity in Directory("lib").listSync(recursive: true)) {
@@ -23,9 +24,11 @@ void main() {
         used.putIfAbsent(m.group(1)!, () => <String>[]).add(entity.path);
       }
     }
-    expect(used, isNotEmpty, reason: "no translated keys found — scanner broken");
+    expect(used, isNotEmpty,
+        reason: "no translated keys found — scanner broken");
 
-    final missing = used.keys.where((k) => !available.contains(k)).toList()..sort();
+    final missing = used.keys.where((k) => !available.contains(k)).toList()
+      ..sort();
     expect(
       missing,
       isEmpty,
@@ -40,7 +43,11 @@ void main() {
         .allMatches(keyMap)
         .map((m) => m.group(1)!)
         .toSet();
-    for (final k in <String>["views.delivInst", "views.pickups", "views.transfers"]) {
+    for (final k in <String>[
+      "views.delivInst",
+      "views.pickups",
+      "views.transfers"
+    ]) {
       expect(available.contains(k), isTrue, reason: k);
     }
     for (var i = 0; i < 7; i++) {

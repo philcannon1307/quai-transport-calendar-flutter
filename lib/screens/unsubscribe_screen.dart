@@ -60,16 +60,22 @@ class _UnsubscribeScreenState extends ConsumerState<UnsubscribeScreen> {
       case _Phase.working:
         msg = bi(s, "Un instant…", "One moment…");
       case _Phase.ready:
-        msg = bi(s, "Voulez-vous vous désabonner des courriels de Quai Lafantaisie ?",
+        msg = bi(
+            s,
+            "Voulez-vous vous désabonner des courriels de Quai Lafantaisie ?",
             "Do you want to unsubscribe from Quai Lafantaisie emails?");
       case _Phase.done:
-        msg = bi(s, "Vous êtes désabonné. Vous ne recevrez plus ces courriels.", "You are unsubscribed. You will no longer receive these emails.");
+        msg = bi(s, "Vous êtes désabonné. Vous ne recevrez plus ces courriels.",
+            "You are unsubscribed. You will no longer receive these emails.");
       case _Phase.already:
-        msg = bi(s, "Vous êtes déjà désabonné.", "You are already unsubscribed.");
+        msg =
+            bi(s, "Vous êtes déjà désabonné.", "You are already unsubscribed.");
       case _Phase.invalid:
-        msg = bi(s, "Ce lien est invalide ou a expiré.", "This link is invalid or has expired.");
+        msg = bi(s, "Ce lien est invalide ou a expiré.",
+            "This link is invalid or has expired.");
       case _Phase.error:
-        msg = bi(s, "Une erreur est survenue. Réessayez plus tard.", "Something went wrong. Please try again later.");
+        msg = bi(s, "Une erreur est survenue. Réessayez plus tard.",
+            "Something went wrong. Please try again later.");
     }
     final bool waiting = _phase == _Phase.checking || _phase == _Phase.working;
     final IconData icon = switch (_phase) {
@@ -103,12 +109,20 @@ class _UnsubscribeScreenState extends ConsumerState<UnsubscribeScreen> {
                   CircleAvatar(
                     radius: 24,
                     backgroundColor: const Color(0xFFF1F3F6),
-                    child: Icon(waiting ? Icons.hourglass_empty : icon, color: waiting ? Colors.black45 : iconColor),
+                    child: Icon(waiting ? Icons.hourglass_empty : icon,
+                        color: waiting ? Colors.black45 : iconColor),
                   ),
                   const SizedBox(height: 16),
-                  Text(s.t("brand.name"), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.black54)),
+                  Text(s.t("brand.name"),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: Colors.black54)),
                   const SizedBox(height: 8),
-                  Text(msg, key: const Key("unsub-message"), textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+                  Text(msg,
+                      key: const Key("unsub-message"),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16)),
                   if (_phase == _Phase.ready) ...<Widget>[
                     const SizedBox(height: 18),
                     FilledButton(
@@ -120,7 +134,10 @@ class _UnsubscribeScreenState extends ConsumerState<UnsubscribeScreen> {
                   ],
                   if (_phase == _Phase.error) ...<Widget>[
                     const SizedBox(height: 18),
-                    OutlinedButton(key: const Key("unsub-retry"), onPressed: _confirm, child: Text(s.t("common.retry"))),
+                    OutlinedButton(
+                        key: const Key("unsub-retry"),
+                        onPressed: _confirm,
+                        child: Text(s.t("common.retry"))),
                   ],
                 ],
               ),

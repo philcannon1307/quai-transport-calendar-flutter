@@ -86,7 +86,10 @@ class TicketService {
 
     var res = await fetch(token, orderNum, onDownload: onDownload);
 
-    if (res.status == 404 && !isTransfer && (tokens.carrierName() == kLogistique || tokens.carrierName() == kSuperUserName)) {
+    if (res.status == 404 &&
+        !isTransfer &&
+        (tokens.carrierName() == kLogistique ||
+            tokens.carrierName() == kSuperUserName)) {
       final alt = await _fromSadmTrucks(orderNum);
       if (alt != null) res = alt;
     }
@@ -99,10 +102,13 @@ class TicketService {
       throw TicketException("Session expirée.", res.status, unauthorized: true);
     }
     if (res.status == 404) {
-      throw const TicketException("Bon de commande temporairement indisponible — veuillez réessayer.", 404);
+      throw const TicketException(
+          "Bon de commande temporairement indisponible — veuillez réessayer.",
+          404);
     }
     if (res.status == 0) {
-      throw const TicketException("Réseau indisponible / Network unavailable.", 0);
+      throw const TicketException(
+          "Réseau indisponible / Network unavailable.", 0);
     }
     final bytes = res.bytes;
     if (!res.ok || bytes == null) {

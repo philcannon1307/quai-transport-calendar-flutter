@@ -24,22 +24,48 @@ void main() {
     });
 
     test("the customer name (first line) is never part of the address", () {
-      expect(parseContact(_ticket, "SO20113").address, isNot(contains("Tremblay")));
+      expect(parseContact(_ticket, "SO20113").address,
+          isNot(contains("Tremblay")));
     });
 
     test("the SO number echoed inside the block is dropped", () {
-      final lines = <String>["Client:", "SO20113", "Jean Tremblay", "9 chemin du Lac", "Mirabel QC", "Phone: 450-555-0000"];
-      expect(parseContact(lines, "so20113").address, "9 chemin du Lac, Mirabel QC");
+      final lines = <String>[
+        "Client:",
+        "SO20113",
+        "Jean Tremblay",
+        "9 chemin du Lac",
+        "Mirabel QC",
+        "Phone: 450-555-0000"
+      ];
+      expect(parseContact(lines, "so20113").address,
+          "9 chemin du Lac, Mirabel QC");
     });
 
     test("French 'Téléphone :' is recognised", () {
-      final lines = <String>["Client", "Marie Roy", "5 rue X", "Phone: 1", "Téléphone : 514 555 1212"];
-      expect(parseContact(<String>["Client", "Marie Roy", "5 rue X", "Téléphone : 514 555 1212"], "SO1").phone, "514 555 1212");
+      final lines = <String>[
+        "Client",
+        "Marie Roy",
+        "5 rue X",
+        "Phone: 1",
+        "Téléphone : 514 555 1212"
+      ];
+      expect(
+          parseContact(<String>[
+            "Client",
+            "Marie Roy",
+            "5 rue X",
+            "Téléphone : 514 555 1212"
+          ], "SO1")
+              .phone,
+          "514 555 1212");
       expect(parseContact(lines, "SO1").phone, "1");
     });
 
-    test("a phone number containing a colon-free value keeps everything after the first colon", () {
-      expect(parseContact(<String>["Phone: ext: 22 819-555-1111"], "SO1").phone, "ext: 22 819-555-1111");
+    test(
+        "a phone number containing a colon-free value keeps everything after the first colon",
+        () {
+      expect(parseContact(<String>["Phone: ext: 22 819-555-1111"], "SO1").phone,
+          "ext: 22 819-555-1111");
     });
 
     test("an empty phone value is null, not an empty string", () {
@@ -47,22 +73,35 @@ void main() {
     });
 
     test("no Client heading means no address", () {
-      final c = parseContact(<String>["Jean", "1 rue A", "Phone: 819-555-0142"], "SO1");
+      final c = parseContact(
+          <String>["Jean", "1 rue A", "Phone: 819-555-0142"], "SO1");
       expect(c.phone, "819-555-0142");
       expect(c.address, isNull);
     });
 
     test("a phone line BEFORE the Client heading yields no address", () {
-      final c = parseContact(<String>["Phone: 819-555-0142", "Client:", "Jean", "1 rue A"], "SO1");
+      final c = parseContact(
+          <String>["Phone: 819-555-0142", "Client:", "Jean", "1 rue A"], "SO1");
       expect(c.address, isNull);
     });
 
     test("a customer with no street line yields no address", () {
-      expect(parseContact(<String>["Client:", "Jean", "Phone: 819-555-0142"], "SO1").address, isNull);
+      expect(
+          parseContact(
+                  <String>["Client:", "Jean", "Phone: 819-555-0142"], "SO1")
+              .address,
+          isNull);
     });
 
     test("blank lines and padding are ignored", () {
-      final c = parseContact(<String>["  ", "Client:  ", " Jean ", "  1 rue A ", "", "Phone:  819-555-0142  "], "SO1");
+      final c = parseContact(<String>[
+        "  ",
+        "Client:  ",
+        " Jean ",
+        "  1 rue A ",
+        "",
+        "Phone:  819-555-0142  "
+      ], "SO1");
       expect(c.address, "1 rue A");
       expect(c.phone, "819-555-0142");
     });
@@ -130,7 +169,8 @@ void main() {
       );
     }
 
-    test("extracts once, caches it, and serves the second call from cache", () async {
+    test("extracts once, caches it, and serves the second call from cache",
+        () async {
       final ex = _CountingExtractor(_ticket);
       final svc = make(extractor: ex);
       final a = await svc.contactFor("SO20113");
@@ -140,15 +180,23 @@ void main() {
       expect(ex.calls, 1);
     });
 
-    test("concurrent requests for the same order share one extraction", () async {
-      final ex = _CountingExtractor(_ticket, delay: const Duration(milliseconds: 10));
+    test("concurrent requests for the same order share one extraction",
+        () async {
+      final ex =
+          _CountingExtractor(_ticket, delay: const Duration(milliseconds: 10));
       final svc = make(extractor: ex);
-      final r = await Future.wait<OrderContact?>(<Future<OrderContact?>>[svc.contactFor("SO1"), svc.contactFor("SO1"), svc.contactFor("SO1")]);
+      final r = await Future.wait<OrderContact?>(<Future<OrderContact?>>[
+        svc.contactFor("SO1"),
+        svc.contactFor("SO1"),
+        svc.contactFor("SO1")
+      ]);
       expect(ex.calls, 1);
       expect(r.every((c) => c?.phone == "819-555-0142"), isTrue);
     });
 
-    test("an unreadable PDF gives null and is NOT cached, so the next try re-extracts", () async {
+    test(
+        "an unreadable PDF gives null and is NOT cached, so the next try re-extracts",
+        () async {
       final ex = _CountingExtractor(null);
       final svc = make(extractor: ex);
       expect(await svc.contactFor("SO1"), isNull);
@@ -165,19 +213,25 @@ void main() {
     });
 
     test("a failed ticket download yields null instead of an error", () async {
-      final svc = make(extractor: _CountingExtractor(_ticket), fetch: (so) async => throw StateError("404"));
+      final svc = make(
+          extractor: _CountingExtractor(_ticket),
+          fetch: (so) async => throw StateError("404"));
       expect(await svc.contactFor("SO1"), isNull);
     });
 
-    test("never processes more than 2 PDFs at once across different orders", () async {
-      final ex = _CountingExtractor(_ticket, delay: const Duration(milliseconds: 8));
+    test("never processes more than 2 PDFs at once across different orders",
+        () async {
+      final ex =
+          _CountingExtractor(_ticket, delay: const Duration(milliseconds: 8));
       final svc = make(extractor: ex);
-      await Future.wait<OrderContact?>(List<Future<OrderContact?>>.generate(6, (i) => svc.contactFor("SO$i")));
+      await Future.wait<OrderContact?>(List<Future<OrderContact?>>.generate(
+          6, (i) => svc.contactFor("SO$i")));
       expect(ex.peak, 2);
     });
 
     test("a corrupt cache entry is ignored and re-extracted", () async {
-      final store = MemorySessionStore()..write("quai:contact:v1:SO1", "{not json");
+      final store = MemorySessionStore()
+        ..write("quai:contact:v1:SO1", "{not json");
       final svc = make(extractor: _CountingExtractor(_ticket), store: store);
       expect((await svc.contactFor("SO1"))?.phone, "819-555-0142");
     });

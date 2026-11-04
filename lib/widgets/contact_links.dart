@@ -10,7 +10,8 @@ import "../theme/quai_tokens.dart";
 /// address parsed out of its picking-ticket PDF. Renders nothing when the
 /// contact is unknown, so a card never shows a dead button.
 class ContactLinks extends ConsumerWidget {
-  const ContactLinks({super.key, required this.soNum, this.round = false, this.small = false});
+  const ContactLinks(
+      {super.key, required this.soNum, this.round = false, this.small = false});
   final String soNum;
 
   /// Round icon-only buttons (call / navigate) used on order cards.
@@ -21,7 +22,10 @@ class ContactLinks extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final contact = ref.watch(orderContactProvider(soNum));
     return contact.when(
-      loading: () => const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+      loading: () => const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2)),
       error: (_, __) => const SizedBox.shrink(),
       data: (c) {
         if (c == null || c.isEmpty) return const SizedBox.shrink();
@@ -39,7 +43,8 @@ class ContactLinks extends ConsumerWidget {
                 small: small,
                 onTap: () => launch(Uri.parse(telHref(phone))),
               ),
-            if (phone != null && address != null) SizedBox(width: small ? 4 : 8),
+            if (phone != null && address != null)
+              SizedBox(width: small ? 4 : 8),
             if (address != null)
               RoundIconButton(
                 key: Key("maps-$soNum"),
@@ -77,7 +82,12 @@ class ContactLinks extends ConsumerWidget {
 
 /// 36 px circular outlined action (26 px when `small`), 44 px tap target through padding.
 class RoundIconButton extends StatelessWidget {
-  const RoundIconButton({super.key, required this.tooltip, required this.icon, required this.onTap, this.small = false});
+  const RoundIconButton(
+      {super.key,
+      required this.tooltip,
+      required this.icon,
+      required this.onTap,
+      this.small = false});
   final String tooltip;
   final IconData icon;
   final VoidCallback onTap;
@@ -97,7 +107,10 @@ class RoundIconButton extends StatelessWidget {
           child: Container(
             width: size,
             height: size,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: c.surface, border: Border.all(color: c.line)),
+            decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: c.surface,
+                border: Border.all(color: c.line)),
             child: Icon(icon, size: small ? 14 : 18, color: c.ink),
           ),
         ),
