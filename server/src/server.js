@@ -15,7 +15,8 @@ let store = null;
 if (config.data.store === "postgres") {
   const { default: pg } = await import("pg");
   const { PgStore } = await import("./data/store-pg.js");
-  const pool = new pg.Pool({ connectionString: config.data.databaseUrl, max: 5, ssl: /sslmode=disable/.test(config.data.databaseUrl) || /@(localhost|127\.0\.0\.1|[a-z0-9-]+\.railway\.internal)/.test(config.data.databaseUrl) ? undefined : { rejectUnauthorized: false } });
+  const { pgSsl } = await import("./data/pg-config.js");
+  const pool = new pg.Pool({ connectionString: config.data.databaseUrl, max: 5, ssl: pgSsl(config.data.databaseUrl) });
   pool.on("error", (e) => log("db_pool_error", { message: e.message }));
   store = new PgStore(pool);
 } else if (config.data.store === "memory") {

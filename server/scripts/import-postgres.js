@@ -37,8 +37,8 @@ const ORDER = ["announcements", "announcement_images", "order_photos", "receipts
 let client = null;
 if (!dry) {
   const { default: pg } = await import("pg");
-  const local = /railway\.internal|localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL);
-  client = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: local ? undefined : { rejectUnauthorized: false } });
+  const { pgSsl } = await import("../src/data/pg-config.js");
+  client = new pg.Client({ connectionString: process.env.DATABASE_URL, ssl: pgSsl(process.env.DATABASE_URL) });
   await client.connect();
   await client.query("begin");
 }

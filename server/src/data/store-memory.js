@@ -43,13 +43,14 @@ export class MemoryStore {
   async removeAnnouncementImage(url) { this.images = this.images.filter((i) => i.storage_url !== url); }
 
   // files
-  async putFile(bucket, path, type, bytes) {
+  async putFile(bucket, path, type, bytes, uploadedBy = null) {
     const k = bucket + "/" + path;
     if (this.files.has(k)) return false;
-    this.files.set(k, { type, bytes: Buffer.from(bytes), createdAt: new Date().toISOString() });
+    this.files.set(k, { type, bytes: Buffer.from(bytes), uploaded_by: uploadedBy, createdAt: new Date().toISOString() });
     return true;
   }
   async getFile(bucket, path) { return this.files.get(bucket + "/" + path) ?? null; }
+  async totalFileBytes() { let n = 0; for (const f of this.files.values()) n += f.bytes.length; return n; }
   async deleteFiles(bucket, paths) { for (const p of paths) this.files.delete(bucket + "/" + p); }
 
   // receipts + adjustments
@@ -72,8 +73,16 @@ export class MemoryStore {
   }
 
   // delivery history
-  async upsertHistory(rows) {
-    for (const r of rows) this.history.set(r.so_num, { ...(this.history.get(r.so_num) ?? {}), ...r, updated_at: new Date().toISOString() });
+  /** ownerNames: null = any row (SuperUser); otherwise only rows already labelled with one of these names may be replaced. */
+  async upsertHistory(rows, ownerNames = null) {
+    let written = 0;
+    for (const r of rows) {
+      const old = this.history.get(r.so_num);
+      if (old && ownerNames && !ownerNames.includes(old.carrier_name)) continue;
+      this.history.set(r.so_num, { ...(old ?? {}), ...r, updated_at: new Date().toISOString() });
+      written++;
+    }
+    return written;
   }
   async listHistory({ from, to, carrierNames, carrierIds }) {
     return [...this.history.values()]
@@ -87,6 +96,14 @@ export class MemoryStore {
   // email bookkeeping
   async countRecentSends(carrier, sinceIso) {
     return this.sendLog.filter((l) => l.metadata.carrier === carrier && ["pending", "sent"].includes(l.status) && l.created_at >= sinceIso).length;
+  }
+  /** Atomic (no await between the checks and the insert): claims one send or says duplicate / throttled. */
+  async claimSend(rec, { key, carrier, limit, sinceIso }) {
+    if (this.sendLog.some((l) => l.metadata.idempotency_key === key && ["pending", "sent"].includes(l.status))) return { state: "duplicate" };
+    if (this.sendLog.filter((l) => l.metadata.carrier === carrier && ["pending", "sent"].includes(l.status) && l.created_at >= sinceIso).length >= limit) return { state: "throttled" };
+    const r = { id: randomUUID(), created_at: new Date().toISOString(), ...rec };
+    this.sendLog.push(r);
+    return { state: "claimed", id: r.id };
   }
   async hasSendWithKey(key) { return this.sendLog.some((l) => l.metadata.idempotency_key === key && ["pending", "sent"].includes(l.status)); }
   async isSuppressed(email) { return this.suppressed.has(email); }

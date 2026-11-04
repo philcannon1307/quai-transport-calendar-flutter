@@ -121,6 +121,7 @@ export function loadConfig(env = process.env) {
   const databaseUrl = env.DATABASE_URL ?? "";
   const dataStore = databaseUrl ? "postgres" : env.DATA_STORE === "memory" ? "memory" : null;
   const publicBaseUrl = (env.PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
+  if (dataStore === "memory" && env.NODE_ENV === "production") errors.push("DATA_STORE=memory is for development only and is refused when NODE_ENV=production: set DATABASE_URL.");
   if (dataStore) {
     try {
       const u = new URL(publicBaseUrl);
@@ -137,6 +138,12 @@ export function loadConfig(env = process.env) {
   if (dataStore && emailProvider === "log") warnings.push("EMAIL_PROVIDER=log: emails are NOT sent (only logged). Set EMAIL_PROVIDER and EMAIL_API_KEY.");
   const emailFrom = env.EMAIL_FROM || "Groupe QL Transport <noreply@notify.groupeql.com>";
 
+  const uploads = {
+    perHour: int(env, "UPLOAD_MAX_PER_HOUR", 60, 1, 100000, errors),
+    mbPerHour: int(env, "UPLOAD_MAX_MB_PER_HOUR", 150, 1, 100000, errors),
+    perMinuteIp: int(env, "UPLOAD_MAX_PER_MINUTE_IP", 30, 1, 100000, errors),
+    storageAlarmMb: int(env, "STORAGE_ALARM_MB", 2000, 1, 10000000, errors),
+  };
   const trustProxyHops = int(env, "TRUST_PROXY_HOPS", 1, 0, 5, errors);
   const port = int(env, "PORT", 3000, 1, 65535, errors);
 
@@ -147,7 +154,7 @@ export function loadConfig(env = process.env) {
       port, credentials, sessionSecret, sessionTtlSeconds, allowedOrigins, jobServiceUrl, jobTimeoutMs,
       superUser, trustProxyHops,
       data: {
-        store: dataStore, databaseUrl, publicBaseUrl, emailFrom, publicSiteUrl: env.PUBLIC_SITE_URL ?? "",
+        store: dataStore, databaseUrl, publicBaseUrl, uploads, emailFrom, publicSiteUrl: env.PUBLIC_SITE_URL ?? "",
         email: { provider: emailProvider, apiKey: env.EMAIL_API_KEY ?? "", replyTo: env.EMAIL_REPLY_TO ?? "" },
       },
       middleware: { url: middlewareUrl, apiKey: middlewareApiKey, timeoutMs: middlewareTimeoutMs },

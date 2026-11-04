@@ -16,14 +16,14 @@ export class PgStore {
 
   // announcements
   async insertAnnouncement(row) {
-    const keys = Object.keys(row).filter((k) => ["title", "body", "title_fr", "body_fr"].includes(k));
+    const keys = Object.keys(row).filter((k) => ["title", "body", "title_fr", "body_fr", "is_active"].includes(k));
     const cols = keys.join(", ");
     const ph = keys.map((_, i) => "$" + (i + 1)).join(", ");
     const r = await this.q(keys.length ? `insert into announcements (${cols}) values (${ph}) returning id` : "insert into announcements default values returning id", keys.map((k) => row[k]));
     return String(r.rows[0].id);
   }
   async updateAnnouncement(id, row) {
-    const keys = Object.keys(row).filter((k) => ["title", "body", "title_fr", "body_fr"].includes(k));
+    const keys = Object.keys(row).filter((k) => ["title", "body", "title_fr", "body_fr", "is_active"].includes(k));
     const sets = keys.map((k, i) => `${k} = $${i + 1}`).concat("updated_at = now()");
     await this.q(`update announcements set ${sets.join(", ")} where id = $${keys.length + 1}`, [...keys.map((k) => row[k]), id]);
   }
@@ -41,14 +41,15 @@ export class PgStore {
   async removeAnnouncementImage(url) { await this.q("delete from announcement_images where storage_url = $1", [url]); }
 
   // files
-  async putFile(bucket, path, type, bytes) {
-    const r = await this.q("insert into files (bucket, path, content_type, bytes) values ($1, $2, $3, $4) on conflict do nothing", [bucket, path, type, bytes]);
+  async putFile(bucket, path, type, bytes, uploadedBy = null) {
+    const r = await this.q("insert into files (bucket, path, content_type, bytes, uploaded_by) values ($1, $2, $3, $4, $5) on conflict do nothing", [bucket, path, type, bytes, uploadedBy]);
     return r.rowCount === 1;
   }
   async getFile(bucket, path) {
-    const r = await this.q("select content_type, bytes from files where bucket = $1 and path = $2", [bucket, path]);
-    return r.rows[0] ? { type: r.rows[0].content_type, bytes: r.rows[0].bytes } : null;
+    const r = await this.q("select content_type, bytes, uploaded_by from files where bucket = $1 and path = $2", [bucket, path]);
+    return r.rows[0] ? { type: r.rows[0].content_type, bytes: r.rows[0].bytes, uploaded_by: r.rows[0].uploaded_by } : null;
   }
+  async totalFileBytes() { return Number((await this.q("select coalesce(sum(octet_length(bytes)), 0)::bigint as n from files")).rows[0].n); }
   async deleteFiles(bucket, paths) { await this.q("delete from files where bucket = $1 and path = any($2::text[])", [bucket, paths]); }
 
   // receipts + adjustments
@@ -76,8 +77,9 @@ export class PgStore {
   }
 
   // delivery history (one multi-row upsert; rows are already de-duplicated by so_num)
-  async upsertHistory(rows) {
-    if (!rows.length) return;
+  /** ownerNames: null = any row (SuperUser); otherwise an existing row is replaced only when it already carries one of these names. */
+  async upsertHistory(rows, ownerNames = null) {
+    if (!rows.length) return 0;
     const cols = HISTORY_COLUMNS;
     const params = [];
     const tuples = rows.map((r) => {
@@ -85,7 +87,9 @@ export class PgStore {
       return "(" + ph.join(",") + ")";
     });
     const updates = cols.filter((c) => c !== "so_num").map((c) => `${c} = excluded.${c}`).concat("updated_at = now()");
-    await this.q(`insert into delivery_history (${cols.join(",")}) values ${tuples.join(",")} on conflict (so_num) do update set ${updates.join(", ")}`, params);
+    let sql = `insert into delivery_history (${cols.join(",")}) values ${tuples.join(",")} on conflict (so_num) do update set ${updates.join(", ")}`;
+    if (ownerNames) { params.push(ownerNames); sql += ` where delivery_history.carrier_name = any($${params.length}::text[])`; }
+    return (await this.q(sql, params)).rowCount;
   }
   async listHistory({ from, to, carrierNames, carrierIds }) {
     const params = [from, to];
@@ -100,6 +104,29 @@ export class PgStore {
   async countRecentSends(carrier, sinceIso) {
     const r = await this.q("select count(*)::int as n from email_send_log where metadata->>'carrier' = $1 and status in ('pending','sent') and created_at >= $2", [carrier, sinceIso]);
     return r.rows[0].n;
+  }
+  /**
+   * Atomic claim of one send: per-carrier advisory lock, hourly count, then insert-first against the unique
+   * index on the idempotency key (pending/sent rows). -> { state: 'claimed', id } | { state: 'duplicate' } | { state: 'throttled' }
+   */
+  async claimSend(rec, { key, carrier, limit, sinceIso }) {
+    const c = await this.pool.connect();
+    try {
+      await c.query("begin");
+      await c.query("select pg_advisory_xact_lock(hashtext($1))", [carrier]);
+      const n = (await c.query("select count(*)::int as n from email_send_log where metadata->>'carrier' = $1 and status in ('pending','sent') and created_at >= $2", [carrier, sinceIso])).rows[0].n;
+      if (n >= limit) { await c.query("rollback"); return { state: "throttled" }; }
+      const r = await c.query("insert into email_send_log (message_id, template_name, recipient_email, status, error_message, metadata) values ($1,$2,$3,$4,$5,$6::jsonb) on conflict ((metadata->>'idempotency_key')) where status in ('pending','sent') do nothing returning id",
+        [rec.message_id, rec.template_name, rec.recipient_email, rec.status, rec.error_message ?? null, JSON.stringify({ ...(rec.metadata ?? {}), idempotency_key: key, carrier })]);
+      if (!r.rowCount) { await c.query("rollback"); return { state: "duplicate" }; }
+      await c.query("commit");
+      return { state: "claimed", id: String(r.rows[0].id) };
+    } catch (e) {
+      try { await c.query("rollback"); } catch { /* connection already gone */ }
+      throw e;
+    } finally {
+      c.release();
+    }
   }
   async hasSendWithKey(key) {
     const r = await this.q("select 1 from email_send_log where metadata->>'idempotency_key' = $1 and status in ('pending','sent') limit 1", [key]);

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../src/app.js";
 import { signSession } from "../src/jwt.js";
 import { MemoryStore } from "../src/data/store-memory.js";
-import { SECRET, makeConfig } from "./helpers.js";
+import { ORIGIN, SECRET, makeConfig } from "./helpers.js";
 
 const BASE = "https://quai.example.com";
 
@@ -11,13 +11,13 @@ function mkConfig(over = {}) {
   return makeConfig({ DATA_STORE: "memory", PUBLIC_BASE_URL: BASE, PUBLIC_SITE_URL: "https://app.example.com", ...over });
 }
 
-async function boot({ config = mkConfig(), store = new MemoryStore(), sent = [], failSend = 0 } = {}) {
+async function boot({ config = mkConfig(), store = new MemoryStore(), sent = [], failSend = 0, logs = [] } = {}) {
   let fails = failSend;
   const mailer = { name: "fake", send: async (m) => { if (fails > 0) { fails--; throw new Error("provider down"); } sent.push(m); } };
-  const server = createApp(config, { store, mailer });
+  const server = createApp(config, { store, mailer, log: (e, f) => logs.push({ e, ...f }) });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const url = "http://127.0.0.1:" + server.address().port;
-  return { server, url, store, sent, close: () => new Promise((r) => server.close(r)) };
+  return { server, url, store, sent, logs, close: () => new Promise((r) => server.close(r)) };
 }
 
 const tokenFor = (carrier, appRole, names = [carrier]) => signSession({ carrier, appRole, trucks: [], names }, SECRET, 600).token;
@@ -321,7 +321,7 @@ test("PgStore: parameterised SQL, fixed table names, upsert shape", async () => 
   assert.match(calls.at(-1).text, /insert into announcements \(title, body\) values \(\$1, \$2\)/);
   assert.deepEqual(calls.at(-1).params, ["t'; drop table x;--", "b"]);
   await s.updateAnnouncement("11111111-1111-1111-1111-111111111111", { title: "n", is_active: false });
-  assert.match(calls.at(-1).text, /update announcements set title = \$1, updated_at = now\(\) where id = \$2/);
+  assert.match(calls.at(-1).text, /update announcements set title = \$1, is_active = \$2, updated_at = now\(\) where id = \$3/);
   await s.upsertHistory([{ so_num: "A", customer: "c" }, { so_num: "B" }]);
   assert.match(calls.at(-1).text, /on conflict \(so_num\) do update set/);
   assert.equal(calls.at(-1).params.length, 44);
@@ -330,4 +330,251 @@ test("PgStore: parameterised SQL, fixed table names, upsert shape", async () => 
   await assert.rejects(() => s.markEmailSent("users; drop", "x"), /bad table/);
   await s.markEmailSent("receipts", "x");
   assert.match(calls.at(-1).text, /update receipts set email_sent = true where id = \$1/);
+});
+
+// ------------------------------------------------------------------------------ PR #4 review fixes
+test("B1: a carrier cannot overwrite or steal another carrier's history row", async () => {
+  const app = await boot();
+  try {
+    const LINDSAY = () => tokenFor("Lindsay - Cole", "carrier");
+    const row = (carrier, customer) => ({ so_num: "SO100", carrier_name: carrier, ship_date: "2026-11-02", customer });
+    assert.deepEqual(await (await op(app, GAT(), { op: "history.upsert", rows: [row("Gat - Sam", "Original")] })).json(), { count: 1 });
+    // Lindsay sends the same so_num labelled with her own name: nothing is written
+    assert.deepEqual(await (await op(app, LINDSAY(), { op: "history.upsert", rows: [row("Lindsay - Cole", "Stolen")] })).json(), { count: 0 });
+    assert.equal(app.store.history.get("SO100").customer, "Original");
+    assert.equal(app.store.history.get("SO100").carrier_name, "Gat - Sam");
+    // the owner may still update its own row
+    assert.deepEqual(await (await op(app, GAT(), { op: "history.upsert", rows: [row("Gat - Sam", "Updated")] })).json(), { count: 1 });
+    assert.equal(app.store.history.get("SO100").customer, "Updated");
+    // a mixed batch writes only what is allowed
+    const mixed = await (await op(app, LINDSAY(), { op: "history.upsert", rows: [row("Lindsay - Cole", "x"), { so_num: "SO101", carrier_name: "Lindsay - Cole", ship_date: "2026-11-02" }] })).json();
+    assert.deepEqual(mixed, { count: 1 });
+    // SuperUser is exempt
+    assert.deepEqual(await (await op(app, SUPER(), { op: "history.upsert", rows: [row("Gat - Sam", "ByAdmin")] })).json(), { count: 1 });
+    assert.equal(app.store.history.get("SO100").customer, "ByAdmin");
+  } finally { await app.close(); }
+});
+
+test("B1 (SQL): the Postgres upsert only replaces rows of the caller's names; SuperUser is unrestricted", async () => {
+  const { PgStore } = await import("../src/data/store-pg.js");
+  const calls = [];
+  const s = new PgStore({ query: async (text, params) => { calls.push({ text, params }); return { rows: [], rowCount: 1 }; } });
+  assert.equal(await s.upsertHistory([{ so_num: "A" }, { so_num: "B" }], ["Gat - Sam", "Gat - Sam 2"]), 1);
+  const scoped = calls.at(-1);
+  assert.match(scoped.text, /on conflict \(so_num\) do update set .* where delivery_history\.carrier_name = any\(\$45::text\[\]\)$/);
+  assert.equal(scoped.params.length, 45);
+  assert.deepEqual(scoped.params.at(-1), ["Gat - Sam", "Gat - Sam 2"]);
+  await s.upsertHistory([{ so_num: "A" }], null);
+  assert.doesNotMatch(calls.at(-1).text, /delivery_history\.carrier_name = any/);
+});
+
+test("S1: uploads are limited per login (count) and per IP; SuperUser is not limited; storage alarm is logged", async () => {
+  const app = await boot({ config: mkConfig({ UPLOAD_MAX_PER_HOUR: "3", UPLOAD_MAX_PER_MINUTE_IP: "100" }) });
+  try {
+    const day = "2026-11-04";
+    for (let i = 0; i < 3; i++) assert.equal((await up(app, GAT(), "receipts", day + "/q" + i + ".png")).status, 200);
+    const blocked = await up(app, GAT(), "receipts", day + "/q3.png");
+    assert.equal(blocked.status, 429);
+    assert.equal((await blocked.json()).error, "upload_quota_exceeded");
+    assert.ok(Number(blocked.headers.get("retry-after")) > 0);
+    assert.equal((await up(app, LOGI(), "receipts", day + "/other.png")).status, 200, "another login is not affected");
+    for (let i = 0; i < 5; i++) assert.equal((await up(app, SUPER(), "announcement-images", uuid() + "/173000000000" + i + "-a.png")).status, 200);
+  } finally { await app.close(); }
+
+  const bytesApp = await boot({ config: mkConfig({ UPLOAD_MAX_MB_PER_HOUR: "1" }) });
+  try {
+    const big = Buffer.concat([PNG, Buffer.alloc(1024 * 1024)]);
+    assert.equal((await up(bytesApp, GAT(), "receipts", "2026-11-04/b1.png", big)).status, 200);
+    assert.equal((await up(bytesApp, GAT(), "receipts", "2026-11-04/b2.png")).status, 429, "byte quota used up");
+  } finally { await bytesApp.close(); }
+
+  const ipApp = await boot({ config: mkConfig({ UPLOAD_MAX_PER_MINUTE_IP: "2" }) });
+  try {
+    assert.equal((await up(ipApp, GAT(), "receipts", "2026-11-04/i1.png")).status, 200);
+    assert.equal((await up(ipApp, LOGI(), "receipts", "2026-11-04/i2.png")).status, 200);
+    assert.equal((await up(ipApp, SUPER(), "announcement-images", uuid() + "/1730000000000-a.png")).status, 429, "IP limit applies to everyone");
+  } finally { await ipApp.close(); }
+
+  const alarmApp = await boot({ config: mkConfig({ STORAGE_ALARM_MB: "1" }) });
+  try {
+    const big = Buffer.concat([PNG, Buffer.alloc(1024 * 1024 + 10)]);
+    assert.equal((await up(alarmApp, GAT(), "receipts", "2026-11-04/big.png", big)).status, 200);
+    await new Promise((r) => setTimeout(r, 50));
+    assert.ok(alarmApp.logs.some((l) => l.e === "storage_alarm"), "total size over the alarm level is logged");
+  } finally { await alarmApp.close(); }
+});
+
+test("S1: UploadQuota window resets", async () => {
+  const { UploadQuota } = await import("../src/data/quota.js");
+  let t = 0;
+  const q = new UploadQuota({ maxCount: 2, maxBytes: 100, windowMs: 1000, now: () => t });
+  assert.equal(q.check("a"), 0);
+  q.add("a", 10); q.add("a", 10);
+  assert.ok(q.check("a") > 0);
+  assert.equal(q.check("b"), 0);
+  t = 1500;
+  assert.equal(q.check("a"), 0);
+  q.add("a", 200);
+  assert.ok(q.check("a") > 0, "bytes limit");
+});
+
+test("S2: data routes answer only allowed origins (no wildcard), pictures stay public", async () => {
+  const app = await boot();
+  try {
+    const hdr = { "Content-Type": "application/json", "X-Quai-Session": GAT() };
+    const body = JSON.stringify({ op: "history.list", from: "2026-01-01", to: "2026-02-01" });
+    const ok = await fetch(app.url + "/functions/v1/quai-data", { method: "POST", headers: { ...hdr, Origin: ORIGIN }, body });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.headers.get("access-control-allow-origin"), ORIGIN);
+    assert.match(ok.headers.get("vary"), /Origin/);
+    const bad = await fetch(app.url + "/functions/v1/quai-data", { method: "POST", headers: { ...hdr, Origin: "https://evil.example" }, body });
+    assert.equal(bad.status, 403);
+    assert.equal(bad.headers.get("access-control-allow-origin"), null);
+    const pre = await fetch(app.url + "/functions/v1/quai-data", { method: "OPTIONS", headers: { Origin: "https://evil.example" } });
+    assert.equal(pre.status, 204);
+    assert.equal(pre.headers.get("access-control-allow-origin"), null);
+    const preOk = await fetch(app.url + "/functions/v1/quai-data", { method: "OPTIONS", headers: { Origin: ORIGIN } });
+    assert.equal(preOk.headers.get("access-control-allow-origin"), ORIGIN);
+    const ann = await fetch(app.url + "/rest/v1/announcements", { headers: { Origin: "https://evil.example" } });
+    assert.equal(ann.status, 403, "announcements are for the app only");
+    await up(app, GAT(), "receipts", "2026-11-04/pub.png");
+    const pic = await fetch(app.url + "/storage/v1/object/public/receipts/2026-11-04/pub.png", { headers: { Origin: "https://anywhere.example" } });
+    assert.equal(pic.status, 200);
+    assert.equal(pic.headers.get("access-control-allow-origin"), "*", "public pictures only");
+  } finally { await app.close(); }
+});
+
+test("S3: concurrent retries with the same key send once; the hourly cap holds under concurrency", async () => {
+  const app = await boot();
+  try {
+    const { id, path } = await seedReceipt(app, GAT());
+    const data = { kind: "receipt", receiptId: id, storagePath: path };
+    const same = await Promise.all(Array.from({ length: 8 }, () => mail(app, GAT(), { templateName: "receipt-uploaded", idempotencyKey: "race", templateData: data })));
+    assert.ok(same.every((r) => r.status === 200));
+    assert.equal(app.sent.length, 1, "exactly one email for one key");
+    const before = app.sent.length;
+    const many = await Promise.all(Array.from({ length: 30 }, (_, i) => mail(app, GAT(), { templateName: "receipt-uploaded", idempotencyKey: "many" + i, templateData: data })));
+    const ok = many.filter((r) => r.status === 200).length;
+    const limited = many.filter((r) => r.status === 429).length;
+    assert.equal(ok + limited, 30);
+    assert.equal(app.sent.length - before + 1, 20, "never more than 20 per hour per carrier");
+    assert.equal(limited, 11);
+  } finally { await app.close(); }
+});
+
+test("S3: a failed send does not block a retry with the same key; no 'pending' claim is left behind", async () => {
+  const app = await boot({ failSend: 3 });
+  try {
+    const { id, path } = await seedReceipt(app, GAT());
+    const data = { kind: "receipt", receiptId: id, storagePath: path };
+    assert.equal((await mail(app, GAT(), { templateName: "receipt-uploaded", idempotencyKey: "same", templateData: data })).status, 502);
+    assert.ok(app.store.sendLog.every((l) => l.status !== "pending"));
+    assert.deepEqual(await (await mail(app, GAT(), { templateName: "receipt-uploaded", idempotencyKey: "same", templateData: data })).json(), { success: true, queued: 1, duplicate: false });
+  } finally { await app.close(); }
+});
+
+test("S3: without a log row, only the uploader's own picture can be emailed", async () => {
+  const app = await boot();
+  try {
+    const path = "2026-11-04/mine.png";
+    assert.equal((await up(app, GAT(), "receipts", path)).status, 200);
+    const data = { kind: "receipt", storagePath: path };
+    const LINDSAY = tokenFor("Lindsay - Cole", "carrier");
+    const other = await mail(app, LINDSAY, { templateName: "receipt-uploaded", idempotencyKey: "o1", templateData: data });
+    assert.equal(other.status, 403);
+    assert.equal((await other.json()).error, "not_your_file");
+    assert.equal(app.sent.length, 0);
+    assert.equal((await mail(app, GAT(), { templateName: "receipt-uploaded", idempotencyKey: "m1", templateData: data })).status, 200, "the app's fallback when logging failed still works");
+    assert.equal((await mail(app, SUPER(), { templateName: "receipt-uploaded", idempotencyKey: "s1", templateData: data })).status, 200);
+  } finally { await app.close(); }
+});
+
+test("S3 (SQL): PgStore.claimSend locks per carrier, counts, then inserts first against the unique key", async () => {
+  const { PgStore } = await import("../src/data/store-pg.js");
+  const mk = (countN, inserted) => {
+    const stmts = [];
+    const client = { released: false, query: async (text, params) => { stmts.push({ text, params }); if (/count\(\*\)/.test(text)) return { rows: [{ n: countN }], rowCount: 1 }; if (/^insert into email_send_log/.test(text)) return { rows: inserted ? [{ id: "log1" }] : [], rowCount: inserted ? 1 : 0 }; return { rows: [], rowCount: 0 }; }, release() { this.released = true; } };
+    return { stmts, client, store: new PgStore({ connect: async () => client, query: async () => ({ rows: [], rowCount: 0 }) }) };
+  };
+  const rec = { message_id: "m", template_name: "t", recipient_email: "a@groupeql.com", status: "pending", metadata: { x: 1 } };
+  const arg = { key: "k:a@groupeql.com", carrier: "Gat - Sam", limit: 20, sinceIso: "2026-11-04T00:00:00Z" };
+
+  const a = mk(0, true);
+  assert.deepEqual(await a.store.claimSend(rec, arg), { state: "claimed", id: "log1" });
+  assert.deepEqual(a.stmts.map((x) => x.text.split(" ")[0]), ["begin", "select", "select", "insert", "commit"]);
+  assert.match(a.stmts[1].text, /pg_advisory_xact_lock\(hashtext\(\$1\)\)/);
+  assert.match(a.stmts[3].text, /on conflict \(\(metadata->>'idempotency_key'\)\) where status in \('pending','sent'\) do nothing returning id/);
+  assert.equal(JSON.parse(a.stmts[3].params[5]).idempotency_key, "k:a@groupeql.com");
+  assert.ok(a.client.released);
+
+  const d = mk(0, false);
+  assert.deepEqual(await d.store.claimSend(rec, arg), { state: "duplicate" });
+  assert.equal(d.stmts.at(-1).text, "rollback");
+
+  const t = mk(20, true);
+  assert.deepEqual(await t.store.claimSend(rec, arg), { state: "throttled" });
+  assert.ok(!t.stmts.some((x) => /^insert/.test(x.text)));
+  assert.ok(t.client.released);
+});
+
+test("S3: schema has the unique idempotency index and the uploader column", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const sql = await readFile(new URL("../db/schema.sql", import.meta.url), "utf8");
+  assert.match(sql, /create unique index if not exists email_send_log_key_uq on email_send_log \(\(metadata->>'idempotency_key'\)\) where status in \('pending','sent'\)/);
+  assert.match(sql, /alter table files add column if not exists uploaded_by text/);
+});
+
+test("nit: one-click unsubscribe header points at the API and the POST works", async () => {
+  const app = await boot();
+  try {
+    const { id, path } = await seedReceipt(app, GAT());
+    await mail(app, GAT(), { templateName: "receipt-uploaded", idempotencyKey: "oc1", templateData: { kind: "receipt", receiptId: id, storagePath: path } });
+    const h = app.sent[0].headers;
+    assert.equal(h["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+    const m = /^<(https:\/\/quai\.example\.com\/functions\/v1\/handle-email-unsubscribe\?token=[0-9a-f]{64})>$/.exec(h["List-Unsubscribe"]);
+    assert.ok(m, "header carries the API url with the token");
+    const local = m[1].replace(BASE, app.url);
+    const res = await fetch(local, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "List-Unsubscribe=One-Click" });
+    assert.deepEqual(await res.json(), { success: true });
+    assert.equal(await app.store.isSuppressed("comptabilite@groupeql.com"), true);
+  } finally { await app.close(); }
+});
+
+test("nit: announcements can be switched off with is_active", async () => {
+  const app = await boot();
+  try {
+    const { id } = await (await op(app, SUPER(), { op: "announcement.insert", row: { title: "T", body: "B" } })).json();
+    const list = async () => (await (await fetch(app.url + "/rest/v1/announcements")).json()).map((a) => a.id);
+    assert.deepEqual(await list(), [id]);
+    assert.equal((await op(app, SUPER(), { op: "announcement.update", id, row: { is_active: "no" } })).status, 400);
+    assert.equal((await op(app, SUPER(), { op: "announcement.update", id, row: { is_active: false } })).status, 200);
+    assert.deepEqual(await list(), []);
+    assert.equal((await op(app, GAT(), { op: "announcement.update", id, row: { is_active: true } })).status, 403);
+  } finally { await app.close(); }
+});
+
+test("nit: DATA_STORE=memory is refused in production; Postgres TLS settings", async () => {
+  const { loadConfig } = await import("../src/config.js");
+  const { makeEnv } = await import("./helpers.js");
+  const prod = loadConfig(makeEnv({ DATA_STORE: "memory", PUBLIC_BASE_URL: BASE, NODE_ENV: "production" }));
+  assert.ok(prod.errors.some((e) => e.includes("DATA_STORE=memory")));
+  assert.deepEqual(loadConfig(makeEnv({ DATA_STORE: "memory", PUBLIC_BASE_URL: BASE })).errors, [], "still fine for development");
+
+  const { pgSsl } = await import("../src/data/pg-config.js");
+  assert.equal(pgSsl("postgres://u:p@db.railway.internal:5432/x", {}), undefined);
+  assert.equal(pgSsl("postgres://u:p@localhost/x", {}), undefined);
+  assert.equal(pgSsl("postgres://u:p@h.example.com/x?sslmode=disable", {}), undefined);
+  assert.deepEqual(pgSsl("postgres://u:p@roundhouse.proxy.rlwy.net:1234/x", {}), { rejectUnauthorized: false });
+  assert.deepEqual(pgSsl("postgres://u:p@db.example.com/x", {}), { rejectUnauthorized: true }, "verified by default");
+  assert.deepEqual(pgSsl("postgres://u:p@db.example.com/x", { PG_SSL_INSECURE: "true" }), { rejectUnauthorized: false });
+  const pem = "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----";
+  assert.deepEqual(pgSsl("postgres://u:p@roundhouse.proxy.rlwy.net:1/x", { DATABASE_CA_CERT: pem }), { ca: pem, rejectUnauthorized: true });
+  assert.deepEqual(pgSsl("postgres://u:p@db.example.com/x", { DATABASE_CA_CERT: Buffer.from(pem).toString("base64") }), { ca: pem, rejectUnauthorized: true });
+});
+
+test("nit: data exports are git-ignored", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const gi = await readFile(new URL("../.gitignore", import.meta.url), "utf8");
+  assert.match(gi, /^export\/$/m);
+  assert.match(gi, /^export-\*\/$/m);
 });

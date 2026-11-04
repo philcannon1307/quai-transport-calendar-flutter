@@ -134,7 +134,10 @@ async function buildJob(template, input, session, store, baseUrl) {
       if (row.storage_path !== path) throw new HttpError(422, "path_mismatch");
     }
     // The picture must really be stored (the log row is optional: the app still sends the email when logging failed).
-    if (!(await store.getFile("receipts", path))) throw new HttpError(404, "file_not_found");
+    const file = await store.getFile("receipts", path);
+    if (!file) throw new HttpError(404, "file_not_found");
+    // No log row: the picture must have been uploaded by this very login (otherwise any receipt user could mail any stored file).
+    if (!row && !superUser && file.uploaded_by !== session.carrier) throw new HttpError(403, "not_your_file");
     const url = baseUrl + "/storage/v1/object/public/receipts/" + encodePath(path);
     return {
       recipients: [bol ? BOL_INBOX : RECEIPT_INBOX],
@@ -157,45 +160,58 @@ export async function sendTransactional({ body, session, store, provider, baseUr
   if (!idempotencyKey || idempotencyKey.length > 120) return { status: 400, body: { error: "idempotencyKey_required" } };
 
   const since = new Date(Date.now() - 3600_000).toISOString();
-  if ((await store.countRecentSends(session.carrier, since)) >= HOURLY_LIMIT) return { status: 429, body: { error: "too_many_emails", retryAfter: 3600 } };
 
   const job = await buildJob(templateName, input, session, store, baseUrl);
   if (job.recipients.length === 0 || !job.recipients.every(isGroupeQl)) throw new HttpError(422, "recipient_not_allowed");
 
   const tpl = TEMPLATES[templateName];
   const subject = tpl.subject(job.data);
-  let sent = 0, suppressed = 0, duplicates = 0;
+  let sent = 0, suppressed = 0, duplicates = 0, throttled = false;
 
   for (const to of job.recipients.map((r) => r.toLowerCase())) {
     const key = idempotencyKey + ":" + to;
-    if (await store.hasSendWithKey(key)) { duplicates++; continue; }
     const messageId = randomUUID();
     const meta = { ...job.meta, carrier: session.carrier, idempotency_key: key };
-    if (await store.isSuppressed(to)) { // fail closed: a lookup error throws and nothing is sent
-      await store.logSend({ message_id: messageId, template_name: templateName, recipient_email: to, status: "suppressed", metadata: meta });
-      suppressed++; continue;
+    // Insert-first: the claim is atomic (unique key + per-carrier lock), so concurrent retries cannot both send.
+    const claim = await store.claimSend(
+      { message_id: messageId, template_name: templateName, recipient_email: to, status: "pending", metadata: meta },
+      { key, carrier: session.carrier, limit: HOURLY_LIMIT, sinceIso: since },
+    );
+    if (claim.state === "duplicate") { duplicates++; continue; }
+    if (claim.state === "throttled") { throttled = true; break; }
+    const logId = claim.id;
+    try {
+      if (await store.isSuppressed(to)) { // fail closed: a lookup error throws and nothing is sent
+        await store.updateSend(logId, { status: "suppressed" });
+        suppressed++; continue;
+      }
+      const token = await store.unsubscribeTokenFor(to);
+      if (token === "used") { await store.updateSend(logId, { status: "suppressed" }); suppressed++; continue; }
+      const siteUnsub = publicSiteUrl ? publicSiteUrl.replace(/\/+$/, "") + "/#/unsubscribe?token=" + token : "";
+      const oneClick = baseUrl + "/functions/v1/handle-email-unsubscribe?token=" + token;
+      const { html, text } = tpl.render(job.data, siteUnsub);
+      const headers = { "List-Unsubscribe": "<" + oneClick + ">", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" };
+      let lastErr = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try { await provider.send({ from, to, subject, html, text, headers }); lastErr = null; break; }
+        catch (e) { lastErr = e; if (attempt < 2) await sleep(500 * (attempt + 1)); }
+      }
+      if (lastErr) {
+        await store.updateSend(logId, { status: "failed", error_message: String(lastErr.message).slice(0, 300) });
+        throw new HttpError(502, "email_provider_error");
+      }
+      await store.updateSend(logId, { status: "sent" });
+      sent++;
+    } catch (e) {
+      // never leave a 'pending' claim behind: it would turn every retry into a silent duplicate
+      if (!(e instanceof HttpError)) await store.updateSend(logId, { status: "failed", error_message: String(e && e.message).slice(0, 300) }).catch(() => {});
+      throw e;
     }
-    const token = await store.unsubscribeTokenFor(to);
-    if (token === "used") { suppressed++; continue; }
-    const unsubUrl = publicSiteUrl ? publicSiteUrl.replace(/\/+$/, "") + "/#/unsubscribe?token=" + token : "";
-    const { html, text } = tpl.render(job.data, unsubUrl);
-    const logId = await store.logSend({ message_id: messageId, template_name: templateName, recipient_email: to, status: "pending", metadata: meta });
-    const headers = unsubUrl ? { "List-Unsubscribe": "<" + unsubUrl + ">" } : undefined;
-    let lastErr = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try { await provider.send({ from, to, subject, html, text, headers }); lastErr = null; break; }
-      catch (e) { lastErr = e; if (attempt < 2) await sleep(500 * (attempt + 1)); }
-    }
-    if (lastErr) {
-      await store.updateSend(logId, { status: "failed", error_message: String(lastErr.message).slice(0, 300) });
-      throw new HttpError(502, "email_provider_error");
-    }
-    await store.updateSend(logId, { status: "sent" });
-    sent++;
   }
 
   // only the server marks a row as emailed
   if ((sent > 0 || duplicates > 0) && job.markTable && job.markId) await store.markEmailSent(job.markTable, job.markId);
+  if (throttled && sent === 0 && duplicates === 0) return { status: 429, body: { error: "too_many_emails", retryAfter: 3600 } };
   if (sent === 0 && duplicates === 0 && suppressed > 0) return { status: 200, body: { success: false, reason: "email_suppressed" } };
   return { status: 200, body: { success: true, queued: sent, duplicate: sent === 0 && duplicates > 0 } };
 }

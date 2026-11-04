@@ -112,3 +112,14 @@ project is no longer needed (see `output/lovable-exit-map.md`). It stays **off**
 6. Only then apply `output/supabase-lockdown.sql` to the old project, and retire it.
 
 Pictures are stored in Postgres (table `files`), so one database backup covers everything.
+
+
+### Hardening notes (review of PR #4)
+
+* **History rows are owned.** `history.upsert` replaces an existing `delivery_history` row only when that row already carries one of the caller's names (SuperUser: any row). A carrier cannot overwrite or take over another carrier's delivery.
+* **Upload quota.** Pictures are stored in Postgres, so each login (SuperUser excepted) may upload 60 files / 150 MB per hour, and one IP 30 uploads per minute (`UPLOAD_MAX_*`). The server logs `storage_alarm` when the total passes `STORAGE_ALARM_MB`. Run `npm run db:schema` again after upgrading (adds `files.uploaded_by` and the unique email-key index; both are idempotent).
+* **CORS.** The data routes answer only the origins in `ALLOWED_ORIGINS`. The single wildcard is `GET /storage/v1/object/public/...` (public pictures).
+* **Emails.** Each send is claimed atomically (unique idempotency key + per-carrier lock, 20 per hour), so concurrent retries cannot send twice. An email for a receipt without a log row is accepted only for a picture uploaded by the same login. `List-Unsubscribe` points at this server with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
+* **Heads-up (inherited behaviour):** unsubscribing `sadm@` or `comptabilite@` silences that inbox for everyone who relies on it. Sessions cannot be revoked before they expire (12 h by default): rotate `SESSION_JWT_SECRET` to end all sessions at once.
+* **Postgres TLS** is verified by default (see `.env.example`). `DATA_STORE=memory` is refused in production.
+* **Exports.** `export/`, `export-*/` are git-ignored: they hold personal data, unsubscribe tokens and receipts.

@@ -45,6 +45,10 @@ function announcementRow(input, requireAll) {
     if (input[k] === undefined) { if (requireAll && (k === "title" || k === "body")) deny(400, k + "_required"); continue; }
     row[k] = str(input[k], max, k, k === "title" || k === "body");
   }
+  if (input.is_active !== undefined) {
+    if (typeof input.is_active !== "boolean") deny(400, "is_active_invalid");
+    row.is_active = input.is_active;
+  }
   return row;
 }
 
@@ -70,7 +74,7 @@ export async function upload({ bucket, path, type, bytes }, s, store, baseUrl) {
   if (bytes.length === 0) deny(400, "empty_file");
   if (bytes.length > MAX_UPLOAD_BYTES) deny(413, "too_large");
   if (!looksLike(type, bytes)) deny(415, "content_mismatch");
-  if (!(await store.putFile(bucket, path, type, bytes))) deny(409, "already_exists");
+  if (!(await store.putFile(bucket, path, type, bytes, s.carrier))) deny(409, "already_exists");
   return { url: publicBase(baseUrl, bucket) + "/" + encodePath(path) };
 }
 
@@ -186,8 +190,9 @@ export async function run(op, b, s, store, baseUrl) {
         bySo.set(so, clean);
       }
       if (bySo.size === 0) return { count: 0 };
-      await store.upsertHistory([...bySo.values()]);
-      return { count: bySo.size };
+      // A carrier may only replace rows that already carry one of its own names (SuperUser: any row).
+      const written = await store.upsertHistory([...bySo.values()], isSuper(s) ? null : s.names);
+      return { count: typeof written === "number" ? written : bySo.size };
     }
     case "history.list": {
       if (typeof b.from !== "string" || !DATE.test(b.from) || typeof b.to !== "string" || !DATE.test(b.to)) deny(400, "range_invalid");

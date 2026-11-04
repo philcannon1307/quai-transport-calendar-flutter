@@ -125,4 +125,10 @@ create table if not exists email_unsubscribe_tokens (
   created_at  timestamptz not null default now()
 );
 
+-- Who uploaded a picture (an email without a log row may only reference the caller's own uploads).
+alter table files add column if not exists uploaded_by text;
+
+-- Atomic idempotency: one pending/sent send per key (failed/suppressed rows may be retried).
+create unique index if not exists email_send_log_key_uq on email_send_log ((metadata->>'idempotency_key')) where status in ('pending','sent');
+
 commit;
