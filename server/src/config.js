@@ -117,6 +117,26 @@ export function loadConfig(env = process.env) {
   const middlewareApiKey = env.MIDDLEWARE_API_KEY ?? "";
   if (!middlewareApiKey) warnings.push("MIDDLEWARE_API_KEY not set: the Pick-ups proxy answers 503 until it is.");
 
+  // --- Data API (replaces the Lovable Cloud / Supabase project) ------------------
+  const databaseUrl = env.DATABASE_URL ?? "";
+  const dataStore = databaseUrl ? "postgres" : env.DATA_STORE === "memory" ? "memory" : null;
+  const publicBaseUrl = (env.PUBLIC_BASE_URL ?? "").replace(/\/+$/, "");
+  if (dataStore) {
+    try {
+      const u = new URL(publicBaseUrl);
+      if (u.protocol !== "https:" && !/^(localhost|127\.0\.0\.1)$/.test(u.hostname)) throw new Error();
+    } catch {
+      errors.push("PUBLIC_BASE_URL is required with the data API: this server's public https address (used in picture links).");
+    }
+  } else {
+    warnings.push("DATABASE_URL not set: the data API (announcements, receipts, change reports, history, email) answers 503.");
+  }
+  const emailProvider = (env.EMAIL_PROVIDER ?? "log").toLowerCase();
+  if (!["resend", "sendgrid", "log"].includes(emailProvider)) errors.push("EMAIL_PROVIDER must be resend, sendgrid or log.");
+  if (dataStore && emailProvider !== "log" && !env.EMAIL_API_KEY) errors.push("EMAIL_API_KEY is required for EMAIL_PROVIDER=" + emailProvider + ".");
+  if (dataStore && emailProvider === "log") warnings.push("EMAIL_PROVIDER=log: emails are NOT sent (only logged). Set EMAIL_PROVIDER and EMAIL_API_KEY.");
+  const emailFrom = env.EMAIL_FROM || "Groupe QL Transport <noreply@notify.groupeql.com>";
+
   const trustProxyHops = int(env, "TRUST_PROXY_HOPS", 1, 0, 5, errors);
   const port = int(env, "PORT", 3000, 1, 65535, errors);
 
@@ -126,6 +146,10 @@ export function loadConfig(env = process.env) {
     config: {
       port, credentials, sessionSecret, sessionTtlSeconds, allowedOrigins, jobServiceUrl, jobTimeoutMs,
       superUser, trustProxyHops,
+      data: {
+        store: dataStore, databaseUrl, publicBaseUrl, emailFrom, publicSiteUrl: env.PUBLIC_SITE_URL ?? "",
+        email: { provider: emailProvider, apiKey: env.EMAIL_API_KEY ?? "", replyTo: env.EMAIL_REPLY_TO ?? "" },
+      },
       middleware: { url: middlewareUrl, apiKey: middlewareApiKey, timeoutMs: middlewareTimeoutMs },
       // Brute-force defences (see README "Security").
       limits: {

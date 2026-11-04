@@ -33,12 +33,12 @@ class SupabaseRestGateway implements BackendGateway {
   final Dio _dio;
 
   @override
-  bool get configured => baseUrl.isNotEmpty && anonKey.isNotEmpty;
+  bool get configured => baseUrl.isNotEmpty; // the Railway data API needs no public key (anonKey may be empty)
 
   /// Public headers: identify the project; read-only power.
   Map<String, String> _publicHeaders([Map<String, String>? extra]) => <String, String>{
-        "apikey": anonKey,
-        "Authorization": "Bearer " + anonKey,
+        if (anonKey.isNotEmpty) "apikey": anonKey,
+        if (anonKey.isNotEmpty) "Authorization": "Bearer " + anonKey,
         ...?extra,
       };
 
@@ -71,7 +71,7 @@ class SupabaseRestGateway implements BackendGateway {
         queryParameters: query,
         options: Options(
           method: method,
-          headers: auth ? _publicHeaders(headers) : <String, String>{"apikey": anonKey, ...?headers},
+          headers: auth ? _publicHeaders(headers) : <String, String>{if (anonKey.isNotEmpty) "apikey": anonKey, ...?headers},
           responseType: ResponseType.json,
           validateStatus: (_) => true,
         ),

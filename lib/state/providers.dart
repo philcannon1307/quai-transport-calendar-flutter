@@ -205,7 +205,7 @@ final urlLauncherProvider = Provider<Future<void> Function(Uri uri)>(
 
 // --- Backend (announcements, receipts, change reports, history, unsubscribe) -------------
 
-/// Supabase URL and PUBLISHABLE key, supplied at build time with --dart-define.
+/// Data API base URL (the Railway exchange server) and an OPTIONAL public key (only the old Supabase needed one), supplied at build time with --dart-define.
 /// Empty = backend features report "not configured" instead of faking success.
 final backendUrlProvider = Provider<String>((ref) => const String.fromEnvironment("QUAI_BACKEND_URL"));
 final backendKeyProvider = Provider<String>((ref) => const String.fromEnvironment("QUAI_BACKEND_KEY"));
@@ -213,7 +213,8 @@ final backendKeyProvider = Provider<String>((ref) => const String.fromEnvironmen
 final backendProvider = Provider<BackendGateway>((ref) {
   final url = ref.watch(backendUrlProvider);
   final key = ref.watch(backendKeyProvider);
-  if (url.isEmpty || key.isEmpty) return const UnconfiguredBackend();
+  // The key is optional: the Railway data API (QUAI_BACKEND_URL = the exchange server) needs none.
+  if (url.isEmpty) return const UnconfiguredBackend();
   return SupabaseRestGateway(
     baseUrl: url,
     anonKey: key,

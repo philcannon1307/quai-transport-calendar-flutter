@@ -3,6 +3,7 @@ import { FailureLimiter, RateLimiter } from "./limiter.js";
 import { createJobService } from "./jobService.js";
 import { createExchange } from "./exchange.js";
 import { createMiddlewareProxy, MIDDLEWARE_PATH } from "./middleware.js";
+import { createDataApi, isDataPath } from "./data/routes.js";
 
 const MAX_BODY = 4096;
 
@@ -12,7 +13,7 @@ export function clientIp(req, hops) {
   return req.socket.remoteAddress ?? "unknown";
 }
 
-export function createApp(config, { jobs, now = Date.now, log = () => {} } = {}) {
+export function createApp(config, { jobs, now = Date.now, log = () => {}, store = null, mailer = null } = {}) {
   const L = config.limits;
   const limiters = {
     perIp: new RateLimiter({ ...L.perIpRequests, now }),
@@ -26,6 +27,9 @@ export function createApp(config, { jobs, now = Date.now, log = () => {} } = {})
   const jobService = jobs ?? createJobService({ baseUrl: config.jobServiceUrl, timeoutMs: config.jobTimeoutMs });
   const exchange = createExchange({ config, jobs: jobService, limiters, log });
   const middleware = createMiddlewareProxy({ config, limiters, log, now });
+
+  // Data API (announcements, receipts, change reports, history, email). Active only with a store.
+  const dataApi = createDataApi({ config, store, provider: mailer, now, log });
 
   function send(res, status, body, extra = {}) {
     const text = body === undefined ? "" : JSON.stringify(body);
@@ -63,6 +67,7 @@ export function createApp(config, { jobs, now = Date.now, log = () => {} } = {})
     try {
       const path = (req.url ?? "/").split("?")[0];
       if (req.method === "GET" && path === "/health") return send(res, 200, { status: "ok" });
+      if (isDataPath(path)) return dataApi.handle(req, res, clientIp(req, config.trustProxyHops));
       const isMiddleware = path === MIDDLEWARE_PATH;
       if (path !== "/exchange" && path !== "/" && !isMiddleware) return send(res, 404, { error: "not_found" });
 
