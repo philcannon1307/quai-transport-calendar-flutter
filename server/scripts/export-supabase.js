@@ -3,6 +3,8 @@
 //
 //   SUPABASE_URL=https://<ref>.supabase.co SUPABASE_KEY=<anon or service key> node scripts/export-supabase.js [outDir]
 //
+// Add --dry-run to only COUNT the rows of each table (one GET each, nothing is saved, nothing is printed but counts).
+//
 // The key is read from the environment only (never a CLI argument, never logged). With the public (anon)
 // key it can read what the old policies allow; the owner can pass a service key from their own shell.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -10,7 +12,8 @@ import { join } from "node:path";
 
 const url = (process.env.SUPABASE_URL ?? "").replace(/\/+$/, "");
 const key = process.env.SUPABASE_KEY ?? "";
-const out = process.argv[2] || "export-supabase";
+const dry = process.argv.includes("--dry-run");
+const out = process.argv.slice(2).find((a) => !a.startsWith("--")) || "export-supabase";
 if (!url || !key) { console.error("SUPABASE_URL and SUPABASE_KEY are required."); process.exit(1); }
 
 const TABLES = [
@@ -24,6 +27,19 @@ async function getJson(path) {
   const res = await fetch(url + path, { headers });
   if (!res.ok) throw new Error(path.split("?")[0] + " -> HTTP " + res.status);
   return res.json();
+}
+
+if (dry) {
+  for (const t of TABLES) {
+    try {
+      const res = await fetch(url + "/rest/v1/" + t + "?select=*&limit=1", { headers: { ...headers, Prefer: "count=exact" } });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      await res.arrayBuffer(); // the single row is discarded unread
+      console.log(t.padEnd(26), (res.headers.get("content-range") ?? "?/?").split("/")[1], "rows");
+    } catch (e) { console.log(t.padEnd(26), "skipped:", e.message); }
+  }
+  console.log("dry run: nothing was saved");
+  process.exit(0);
 }
 
 await mkdir(join(out, "files"), { recursive: true });
