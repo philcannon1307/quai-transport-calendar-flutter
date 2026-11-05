@@ -1,11 +1,11 @@
 import "../api/session.dart";
 import "../models/order.dart";
-import "calendar_views.dart";
 import "calendar_week.dart";
 
 /// Shared "Préparé" state of one order on one day (stored on the server, see server/src/data/prepState.js).
 class PrepEntry {
-  const PrepEntry({required this.prepared, this.by = "", this.label = "", this.at});
+  const PrepEntry(
+      {required this.prepared, this.by = "", this.label = "", this.at});
 
   final bool prepared;
 
@@ -33,18 +33,17 @@ String prepDateOf(Order o) {
 }
 
 /// Server key: order number + day. The same order on two days is prepared separately.
-String prepKey(String orderNum, String date) => "${orderNum.trim().toUpperCase()}|$date";
+String prepKey(String orderNum, String date) =>
+    "${orderNum.trim().toUpperCase()}|$date";
 String prepKeyOf(Order o) => prepKey(o.soNum, prepDateOf(o));
 
 /// UI hint only (the server enforces it): logistics logins and the SuperUser may change the state.
-bool canPrepare(String? role) => role == kRoleLogistique || role == kRoleSuperUser;
+bool canPrepare(String? role) =>
+    role == kRoleLogistique || role == kRoleSuperUser;
 
-/// Cards that have a "prepared" state: everything except cancelled orders and customer pick-ups.
-bool needsPrep(Order o) {
-  if (statusOf(o) == QuaiStatus.cancelled) return false;
-  if (o.isTransfer) return true;
-  return calendarView(o) != CalendarViewKind.pickups;
-}
+/// Cards that have a "prepared" state: EVERY job type (deliveries, installs, pick-ups, transfers), provisional or
+/// not. Only cancelled orders have none.
+bool needsPrep(Order o) => statusOf(o) != QuaiStatus.cancelled;
 
 String isoDay(DateTime d) =>
     "${d.year.toString().padLeft(4, "0")}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")}";
@@ -56,7 +55,8 @@ String prepStamp(PrepEntry e, DateTime now) {
   final who = e.who;
   if (at == null) return who;
   final t = "${two(at.hour)}:${two(at.minute)}";
-  final sameDay = at.year == now.year && at.month == now.month && at.day == now.day;
+  final sameDay =
+      at.year == now.year && at.month == now.month && at.day == now.day;
   final when = sameDay ? t : "${at.day}/${at.month} $t";
   return who.isEmpty ? when : "$who · $when";
 }
@@ -69,7 +69,7 @@ class PrepCount {
   bool get complete => total > 0 && done == total;
 }
 
-/// "X/Y préparées" for a day: cancelled orders and pick-ups are not counted.
+/// "X/Y préparées" for a day: cancelled orders are not counted.
 PrepCount prepCount(Iterable<Order> orders, Map<String, PrepEntry> states) {
   var done = 0, total = 0;
   for (final o in orders) {
