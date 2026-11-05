@@ -10,6 +10,7 @@ import "../logic/order_windows.dart";
 import "../models/order.dart";
 import "../state/providers.dart";
 import "../theme.dart";
+import "../widgets/admin_aggregate_bar.dart";
 import "../widgets/announcement_banner.dart";
 import "../widgets/bilingual.dart";
 import "../widgets/order_change.dart";
@@ -239,6 +240,7 @@ class _AdminBody extends ConsumerWidget {
           children: <Widget>[
             const AnnouncementBanner(),
             const SizedBox(height: 10),
+            const AdminAggregateBar(),
             if (data.failedTrucks.isNotEmpty)
               Text("${bi(s, "Non chargés", "Not loaded")}: ${data.failedTrucks.join(", ")}",
                   style: const TextStyle(color: Color(0xFF92400E), fontSize: 12)),

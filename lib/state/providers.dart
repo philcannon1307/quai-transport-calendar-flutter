@@ -7,6 +7,7 @@ import "package:url_launcher/url_launcher.dart";
 
 import "../api/api_client.dart";
 import "../api/adjustment_service.dart";
+import "../api/admin_aggregate.dart";
 import "../api/announcements_service.dart";
 import "../api/auth_service.dart";
 import "../api/backend_gateway.dart";
@@ -269,10 +270,58 @@ final pastOrdersProvider = FutureProvider<List<Order>>((ref) async {
   return ref.watch(historyServiceProvider).past(days: days, carrierNames: names);
 });
 
-/// SuperUser aggregate of every account. Empty unless the session is the SuperUser's.
+/// Server-side cached orders of every truck (GET /admin/orders-aggregate). Null when the SuperUser
+/// is not signed in, the server cannot answer, or it has no data yet: the Admin screen then falls
+/// back to loading truck by truck. Re-read every minute while the screen is open.
+final adminAggregateServiceProvider = Provider<AdminAggregateService?>((ref) {
+  final session = ref.watch(sessionProvider);
+  if (!session.isSuperUser) return null;
+  final url = adminAggregateUrlFor(ref.watch(middlewareProxyUrlProvider));
+  if (url.isEmpty) return null;
+  return AdminAggregateService(url: url, token: session.sessionToken);
+});
+
+final adminAggregateProvider = FutureProvider<AdminAggregate?>((ref) async {
+  final service = ref.watch(adminAggregateServiceProvider);
+  if (service == null) return null;
+  final timer = Timer(const Duration(minutes: 1), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  final agg = await service.fetch();
+  return agg != null && agg.hasData ? agg : null;
+});
+
+/// True while a manual "Refresh" is waiting for the server.
+final adminRefreshingProvider = StateProvider<bool>((ref) => false);
+
+/// Asks the server to refresh now, then re-reads the aggregate until it is done (max ~4 min).
+Future<void> refreshAdminAggregate(ProviderContainer ref, {Duration poll = const Duration(seconds: 8), int maxPolls = 30}) async {
+  final service = ref.read(adminAggregateServiceProvider);
+  if (service == null || ref.read(adminRefreshingProvider)) return;
+  ref.read(adminRefreshingProvider.notifier).state = true;
+  try {
+    final r = await service.requestRefresh();
+    if (r == AggregateRefresh.failed || r == AggregateRefresh.rateLimited) {
+      ref.invalidate(adminAggregateProvider);
+      return;
+    }
+    for (var i = 0; i < maxPolls; i++) {
+      await Future<void>.delayed(poll);
+      final agg = await service.fetch();
+      ref.invalidate(adminAggregateProvider);
+      if (agg != null && !agg.refreshing) break;
+    }
+  } finally {
+    ref.read(adminRefreshingProvider.notifier).state = false;
+  }
+}
+
+/// SuperUser aggregate of every account: the server's cache first (one fast request), and only
+/// when that is unavailable the slow per-truck path. Empty unless the session is the SuperUser's.
 final adminLoadProvider = FutureProvider<OrdersLoad>((ref) async {
   final session = ref.watch(sessionProvider);
   if (!session.isSuperUser) return const OrdersLoad();
+  final cached = await ref.watch(adminAggregateProvider.future);
+  if (cached != null) return cached.toOrdersLoad();
   return ref.watch(ordersRepositoryProvider).loadAggregate(
         accounts: carrierAccounts(kCarriers),
         tokensByUsername: session.linkedTokens(),

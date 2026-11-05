@@ -28,6 +28,10 @@ const { createProvider } = await import("./data/email.js");
 const mailer = createProvider(config.data.email);
 
 const server = createApp(config, { log, store, mailer });
-server.listen(config.port, "0.0.0.0", () => log("listening", { port: config.port, origins: [...config.allowedOrigins] }));
+server.listen(config.port, "0.0.0.0", () => {
+  log("listening", { port: config.port, origins: [...config.allowedOrigins] });
+  // /health answers now; the first aggregate refresh starts a few seconds later.
+  server.adminAggregate.start().catch((e) => log("admin_aggregate_start_failed", { message: e && e.message }));
+});
 
-for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => server.close(() => process.exit(0)));
+for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { server.adminAggregate.stop().catch(() => {}); server.close(() => process.exit(0)); });

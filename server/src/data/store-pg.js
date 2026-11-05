@@ -210,4 +210,19 @@ export class PgStore {
     await this.q("insert into suppressed_emails (email, reason) values ($1, 'unsubscribe') on conflict (email) do nothing", [email.toLowerCase()]);
     return email;
   }
+
+  // Admin orders aggregate cache: ONE row, created on first use so no manual migration is needed.
+  async ensureAggregateTable() {
+    if (this.aggregateTable) return;
+    await this.q("create table if not exists admin_aggregate_cache (id int primary key, payload text not null, updated_at timestamptz not null default now())");
+    this.aggregateTable = true;
+  }
+  async getAggregateCache() {
+    await this.ensureAggregateTable();
+    return (await this.q("select payload from admin_aggregate_cache where id = 1")).rows[0]?.payload ?? null;
+  }
+  async putAggregateCache(text) {
+    await this.ensureAggregateTable();
+    await this.q("insert into admin_aggregate_cache (id, payload, updated_at) values (1, $1, now()) on conflict (id) do update set payload = excluded.payload, updated_at = now()", [text]);
+  }
 }

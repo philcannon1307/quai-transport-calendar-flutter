@@ -5,6 +5,7 @@ import { createExchange } from "./exchange.js";
 import { createMiddlewareProxy, MIDDLEWARE_PATH } from "./middleware.js";
 import { createSalesOrderProxy, SALES_ORDER_PATH } from "./salesOrder.js";
 import { createDataApi, isDataPath } from "./data/routes.js";
+import { createAdminAggregate, AGGREGATE_PATH, AGGREGATE_REFRESH_PATH } from "./adminAggregate.js";
 
 const MAX_BODY = 4096;
 
@@ -14,7 +15,7 @@ export function clientIp(req, hops) {
   return req.socket.remoteAddress ?? "unknown";
 }
 
-export function createApp(config, { jobs, now = Date.now, log = () => {}, store = null, mailer = null, salesOrderRetryMs } = {}) {
+export function createApp(config, { jobs, now = Date.now, log = () => {}, store = null, mailer = null, salesOrderRetryMs, adminAggregate = null } = {}) {
   const L = config.limits;
   const limiters = {
     perIp: new RateLimiter({ ...L.perIpRequests, now }),
@@ -29,6 +30,8 @@ export function createApp(config, { jobs, now = Date.now, log = () => {}, store 
   const exchange = createExchange({ config, jobs: jobService, limiters, log });
   const middleware = createMiddlewareProxy({ config, limiters, log, now });
   const salesOrder = createSalesOrderProxy({ config, limiters, log, now, retryDelayMs: salesOrderRetryMs });
+  // Background refresher for the Admin screen. Created here, STARTED by server.js (tests drive it by hand).
+  const aggregate = adminAggregate ?? createAdminAggregate({ config, jobs: jobService, store, log, now });
 
   // Data API (announcements, receipts, change reports, history, email). Active only with a store.
   const dataApi = createDataApi({ config, store, provider: mailer, now, log });
@@ -65,14 +68,15 @@ export function createApp(config, { jobs, now = Date.now, log = () => {}, store 
     });
   }
 
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     try {
       const path = (req.url ?? "/").split("?")[0];
       if (req.method === "GET" && path === "/health") return send(res, 200, { status: "ok" });
       if (isDataPath(path)) return dataApi.handle(req, res, clientIp(req, config.trustProxyHops));
       const isSalesOrder = path === SALES_ORDER_PATH;
       const isMiddleware = path === MIDDLEWARE_PATH || isSalesOrder;
-      if (path !== "/exchange" && path !== "/" && !isMiddleware) return send(res, 404, { error: "not_found" });
+      const isAggregate = path === AGGREGATE_PATH || path === AGGREGATE_REFRESH_PATH;
+      if (path !== "/exchange" && path !== "/" && !isMiddleware && !isAggregate) return send(res, 404, { error: "not_found" });
 
       // CORS: a browser Origin must be on the allow-list; no Origin = not a browser.
       const origin = req.headers.origin;
@@ -84,10 +88,17 @@ export function createApp(config, { jobs, now = Date.now, log = () => {}, store 
       if (req.method === "OPTIONS") {
         return send(res, 204, undefined, {
           ...cors,
-          "Access-Control-Allow-Methods": isMiddleware ? "GET, OPTIONS" : "POST, OPTIONS",
-          "Access-Control-Allow-Headers": isMiddleware ? "Authorization, X-Quai-Session, Cache-Control, Content-Type" : "Content-Type",
+          "Access-Control-Allow-Methods": isAggregate ? "GET, POST, OPTIONS" : isMiddleware ? "GET, OPTIONS" : "POST, OPTIONS",
+          "Access-Control-Allow-Headers": isMiddleware || isAggregate ? "Authorization, X-Quai-Session, Cache-Control, Content-Type" : "Content-Type",
           "Access-Control-Max-Age": "600",
         });
+      }
+      if (isAggregate) {
+        const aip = clientIp(req, config.trustProxyHops);
+        const aWait = limiters.middlewarePerIp.hit(aip);
+        if (aWait > 0) return send(res, 429, { error: "too_many_requests", retryAfter: aWait }, { ...cors, "Retry-After": String(aWait) });
+        const out = await aggregate.handle(req, new URL(req.url ?? "/", "http://x"), limiters);
+        return send(res, out.status, out.body, { ...cors, ...(out.headers ?? {}) });
       }
       if (isMiddleware) {
         if (req.method !== "GET") return send(res, 405, { error: "method_not_allowed" }, { ...cors, Allow: "GET, OPTIONS" });
@@ -125,4 +136,6 @@ export function createApp(config, { jobs, now = Date.now, log = () => {}, store 
       else res.end();
     }
   });
+  server.adminAggregate = aggregate;
+  return server;
 }
