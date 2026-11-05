@@ -1,27 +1,23 @@
 import "package:flutter/material.dart";
 
-/// Brand colours from the reference app: navy hsl(222 30% 14%), purple hsl(258 90% 66%).
-const Color kNavy = Color(0xFF191D2E);
-const Color kPurple = Color(0xFF8A5CF6);
+import "theme/quai_tokens.dart";
 
-ThemeData buildTheme() {
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(seedColor: kPurple),
-    scaffoldBackgroundColor: const Color(0xFFF7F6FB),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: kNavy,
-      foregroundColor: Colors.white,
-      elevation: 0,
-      centerTitle: false,
-    ),
-  );
-}
+export "theme/quai_tokens.dart";
 
-/// Status colours for calendar cards.
+/// App theme: 'Ember on ink' (light). All values live in theme/quai_tokens.dart.
+ThemeData buildTheme() => quaiTheme(Brightness.light);
+
+// --- Legacy aliases (admin / unsubscribe / banner screens, phase 2 will migrate them to context.q) ---
+/// Ink (was navy).
+const Color kNavy = Color(0xFF1A1A1A);
+
+/// Brand orange for small text/borders (primary-ink; was purple).
+const Color kPurple = Color(0xFFB8431A);
+
+/// Legacy card palette. Mapped to the status/service tokens: past = Annulé crimson.
 class CardPalette {
-  static const Color past = Color(0xFFD64545);
-  static const Color delivInst = kPurple;
-  static const Color pickups = Color(0xFF0E9F6E);
-  static const Color transfers = Color(0xFF2563EB);
+  static const Color past = Color(0xFFA3123A);
+  static const Color delivInst = Color(0xFF1A1A1A);
+  static const Color pickups = Color(0xFF7A5B3A);
+  static const Color transfers = Color(0xFF74716E);
 }

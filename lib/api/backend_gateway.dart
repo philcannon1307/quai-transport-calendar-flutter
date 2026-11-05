@@ -98,11 +98,14 @@ class UnconfiguredBackend implements BackendGateway {
   @override
   Future<String> insertAnnouncement(Map<String, String> row) async => _no();
   @override
-  Future<void> updateAnnouncement(String id, Map<String, String> row) async => _no();
+  Future<void> updateAnnouncement(String id, Map<String, String> row) async =>
+      _no();
   @override
   Future<void> deleteAnnouncement(String id) async => _no();
   @override
-  Future<void> insertAnnouncementImage(String announcementId, String url) async => _no();
+  Future<void> insertAnnouncementImage(
+          String announcementId, String url) async =>
+      _no();
   @override
   Future<void> deleteAnnouncementImageByUrl(String url) async => _no();
   @override

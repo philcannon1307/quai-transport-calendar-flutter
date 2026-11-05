@@ -16,14 +16,17 @@ class NotFoundScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Text("404", key: Key("not-found-code"), style: TextStyle(fontSize: 40, fontWeight: FontWeight.w700)),
+            const Text("404",
+                key: Key("not-found-code"),
+                style: TextStyle(fontSize: 40, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             Text(bi(s, "Oups ! Page introuvable", "Oops! Page not found"),
                 style: const TextStyle(fontSize: 20, color: Colors.black54)),
             const SizedBox(height: 12),
             TextButton(
               key: const Key("not-found-home"),
-              onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil("/", (_) => false),
+              onPressed: () => Navigator.of(context)
+                  .pushNamedAndRemoveUntil("/", (_) => false),
               child: Text(bi(s, "Retour à l'accueil", "Return to Home")),
             ),
           ],

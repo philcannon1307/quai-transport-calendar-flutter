@@ -4,7 +4,8 @@ import "photo_picker.dart";
 
 /// The ONLY file that imports image_picker.
 class ImagePickerPhotoPicker implements PhotoPicker {
-  ImagePickerPhotoPicker({ImagePicker? picker}) : _picker = picker ?? ImagePicker();
+  ImagePickerPhotoPicker({ImagePicker? picker})
+      : _picker = picker ?? ImagePicker();
   final ImagePicker _picker;
 
   @override

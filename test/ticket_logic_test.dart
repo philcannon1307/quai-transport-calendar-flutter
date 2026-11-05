@@ -28,7 +28,8 @@ void main() {
   });
 
   group("progress easing", () {
-    test("starts low and only ever increases while NetSuite builds the PDF", () {
+    test("starts low and only ever increases while NetSuite builds the PDF",
+        () {
       var p = kStartProgress;
       var last = p;
       for (var ms = 0; ms <= 30000; ms += 200) {
@@ -58,7 +59,8 @@ void main() {
       expect(downloadProgress(40, 1), 90);
     });
 
-    test("unknown length parks at 80", () => expect(downloadProgress(40, null), 80));
+    test("unknown length parks at 80",
+        () => expect(downloadProgress(40, null), 80));
 
     test("never moves backwards", () {
       expect(downloadProgress(85, 0), 85);

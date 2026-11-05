@@ -17,7 +17,9 @@ class ConcurrencyLimiter {
     final completer = Completer<T>();
     void start() {
       _active++;
-      Future<T>.sync(task).then<void>(completer.complete, onError: completer.completeError).whenComplete(() {
+      Future<T>.sync(task)
+          .then<void>(completer.complete, onError: completer.completeError)
+          .whenComplete(() {
         _active--;
         if (_queue.isNotEmpty) _queue.removeFirst()();
       });

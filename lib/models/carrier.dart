@@ -28,7 +28,8 @@ class Carrier {
 /// One backend account per truck, labelled with its shared calendar name.
 /// Credentials are deliberately absent: the server-side token exchange owns them.
 class CarrierAccount {
-  const CarrierAccount({required this.displayName, required this.username, required this.truck});
+  const CarrierAccount(
+      {required this.displayName, required this.username, required this.truck});
   final String displayName;
   final String username;
   final String truck;

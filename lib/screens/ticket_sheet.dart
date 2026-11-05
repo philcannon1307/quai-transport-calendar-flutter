@@ -4,16 +4,23 @@ import "dart:typed_data";
 import "package:flutter/material.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
 
+import "../api/sales_order_service.dart";
 import "../api/ticket_service.dart";
 import "../i18n/i18n.dart";
 import "../logic/ticket_progress.dart";
+import "../models/order.dart";
 import "../pdf/pdf_ports.dart";
 import "../state/providers.dart";
 import "../theme.dart";
+import "../widgets/order_change.dart";
+import "../widgets/provisional_ticket_view.dart";
 
-Future<void> showTicketSheet(BuildContext context, String orderNum) {
+Future<void> showTicketSheet(BuildContext context, String orderNum,
+    {Order? order}) {
   return Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => TicketSheet(orderNum: orderNum)),
+    MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => TicketSheet(orderNum: orderNum, order: order)),
   );
 }
 
@@ -36,6 +43,7 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
   TicketPhase _phase = TicketPhase.server;
   Uint8List? _bytes;
   String? _error;
+  SalesOrderDetails? _provisional;
   bool _loading = true;
 
   @override
@@ -65,6 +73,7 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
       _loading = true;
       _error = null;
       _bytes = null;
+      _provisional = null;
       _ticks = 0;
       _progress = kStartProgress;
       _phase = TicketPhase.server;
@@ -73,10 +82,13 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
     _timer = Timer.periodic(const Duration(milliseconds: _tickMs), (_) {
       if (!mounted) return;
       _ticks++;
-      setState(() => _progress = nextServerProgress(_progress, _ticks * _tickMs));
+      setState(
+          () => _progress = nextServerProgress(_progress, _ticks * _tickMs));
     });
     try {
-      final bytes = await ref.read(ticketServiceProvider).getTicket(widget.orderNum, onProgress: _onProgress);
+      final bytes = await ref
+          .read(ticketServiceProvider)
+          .getTicket(widget.orderNum, onProgress: _onProgress);
       _timer?.cancel();
       if (!mounted) return;
       setState(() {
@@ -87,7 +99,15 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
       });
     } on TicketException catch (e) {
       _timer?.cancel();
+      final provisional = e.status == 404 ? await _provisionalFor(widget.orderNum) : null;
       if (!mounted) return;
+      if (provisional != null) {
+        setState(() {
+          _provisional = provisional;
+          _loading = false;
+        });
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
@@ -103,11 +123,22 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
     }
   }
 
+  /// No truck yet (the job service has no ticket): Logistique / SuperUser get the provisional list.
+  Future<SalesOrderDetails?> _provisionalFor(String soNum) async {
+    final service = ref.read(salesOrderServiceProvider);
+    if (service == null) return null;
+    final orders = await ref.read(ordersProvider.future).catchError((_) => <Order>[]);
+    final id = orders.where((o) => o.soNum == soNum && (o.soId ?? 0) > 0).map((o) => o.soId!).firstOrNull;
+    return id == null ? null : service.fetch(id);
+  }
+
   Future<void> _print() async {
     final bytes = _bytes;
     if (bytes == null) return;
     try {
-      await ref.read(ticketFileActionsProvider).printPdf(bytes, widget.orderNum);
+      await ref
+          .read(ticketFileActionsProvider)
+          .printPdf(bytes, widget.orderNum);
     } catch (_) {
       // the browser blocked or cancelled printing: nothing to recover
     }
@@ -117,7 +148,9 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
     final bytes = _bytes;
     if (bytes == null) return;
     try {
-      await ref.read(ticketFileActionsProvider).download(bytes, widget.orderNum);
+      await ref
+          .read(ticketFileActionsProvider)
+          .download(bytes, widget.orderNum);
     } catch (_) {
       // the browser blocked the download: nothing to recover
     }
@@ -143,7 +176,10 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
         title: Text(
           widget.orderNum,
           key: const Key("ticket-title"),
-          style: const TextStyle(fontFamily: "monospace", fontWeight: FontWeight.w600, fontSize: 15),
+          style: const TextStyle(
+              fontFamily: "monospace",
+              fontWeight: FontWeight.w600,
+              fontSize: 15),
         ),
         actions: <Widget>[
           Padding(
@@ -183,6 +219,26 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
                   icon: const Icon(Icons.download_outlined, size: 18),
                   label: const Text("Télécharger / Download"),
                 ),
+                if (widget.order != null)
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        minimumSize: const Size(0, 44),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                        textStyle: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14)),
+                    key: const Key("ticket-change"),
+                    onPressed: () => showOrderChangeScreen(context, widget.order!),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text("Modifier la commande / Change order"),
+                  ),
+                OutlinedButton.icon(
+                  key: const Key("ticket-history"),
+                  onPressed: () => showOrderHistory(context, widget.orderNum),
+                  icon: const Icon(Icons.history, size: 18),
+                  label: const Text("Historique / History"),
+                ),
+                TicketChangedBadge(orderNum: widget.orderNum),
               ],
             ),
           ),
@@ -190,7 +246,12 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
             child: Stack(
               children: <Widget>[
                 if (_bytes != null)
-                  Positioned.fill(child: ref.watch(ticketPdfBuilderProvider)(context, _bytes!, widget.orderNum)),
+                  Positioned.fill(
+                      child: ref.watch(ticketPdfBuilderProvider)(
+                          context, _bytes!, widget.orderNum)),
+                if (_provisional != null)
+                  Positioned.fill(
+                      child: ProvisionalTicketView(details: _provisional!)),
                 if (_error != null)
                   Positioned.fill(
                     child: Center(
@@ -199,9 +260,12 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
-                            const Icon(Icons.error_outline, color: CardPalette.past),
+                            const Icon(Icons.error_outline,
+                                color: CardPalette.past),
                             const SizedBox(height: 8),
-                            Text(_error!, key: const Key("ticket-error"), textAlign: TextAlign.center),
+                            Text(_error!,
+                                key: const Key("ticket-error"),
+                                textAlign: TextAlign.center),
                             const SizedBox(height: 12),
                             OutlinedButton(
                               key: const Key("ticket-retry"),
@@ -225,11 +289,17 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: <Widget>[
-                                Text(_phaseText, key: const Key("ticket-phase"), textAlign: TextAlign.center),
+                                Text(_phaseText,
+                                    key: const Key("ticket-phase"),
+                                    textAlign: TextAlign.center),
                                 const SizedBox(height: 12),
-                                LinearProgressIndicator(key: const Key("ticket-progress"), value: _progress / 100),
+                                LinearProgressIndicator(
+                                    key: const Key("ticket-progress"),
+                                    value: _progress / 100),
                                 const SizedBox(height: 6),
-                                Text("${_progress.round()}%", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                                Text("${_progress.round()}%",
+                                    style: const TextStyle(
+                                        fontSize: 12, color: Colors.black54)),
                               ],
                             ),
                           ),

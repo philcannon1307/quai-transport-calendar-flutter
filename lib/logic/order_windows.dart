@@ -23,7 +23,9 @@ class OrderWindows {
   /// Midnight-normalised date of the current business day.
   static DateTime businessDate(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
-    return now.hour < rolloverHour ? today.subtract(const Duration(days: 1)) : today;
+    return now.hour < rolloverHour
+        ? today.subtract(const Duration(days: 1))
+        : today;
   }
 
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);

@@ -7,11 +7,13 @@ import "package:url_launcher/url_launcher.dart";
 
 import "../api/api_client.dart";
 import "../api/adjustment_service.dart";
+import "../api/admin_aggregate.dart";
 import "../api/announcements_service.dart";
 import "../api/auth_service.dart";
 import "../api/backend_gateway.dart";
 import "../api/history_service.dart";
 import "../api/receipts_service.dart";
+import "../api/sales_order_service.dart";
 import "../api/supabase_rest_gateway.dart";
 import "../api/unsubscribe_service.dart";
 import "../logic/announcements.dart";
@@ -32,7 +34,8 @@ final localeProvider = StateProvider<Locale>((ref) => const Locale("fr"));
 /// The dictionary loaded in main() before runApp. Overridden in ProviderScope;
 /// reading it without that override is a programming error.
 final preloadedStringsProvider = Provider<Strings>(
-  (ref) => throw StateError("preloadedStringsProvider must be overridden in main()"),
+  (ref) =>
+      throw StateError("preloadedStringsProvider must be overridden in main()"),
 );
 
 /// Loads the ARB dictionary once per locale (not on every widget rebuild).
@@ -41,33 +44,41 @@ final stringsProvider = FutureProvider<Strings>((ref) async {
   return Strings.load(locale);
 });
 
-final sessionStoreProvider = Provider<SessionStore>((ref) => MemorySessionStore());
+final sessionStoreProvider =
+    Provider<SessionStore>((ref) => MemorySessionStore());
 
-final sessionProvider = Provider<Session>((ref) => Session(ref.watch(sessionStoreProvider)));
+final sessionProvider =
+    Provider<Session>((ref) => Session(ref.watch(sessionStoreProvider)));
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 
 /// Server-side token exchange endpoint. Empty until the Railway side exists.
 /// Injected at runtime; never a secret in the bundle.
-final exchangeUrlProvider = Provider<String>((ref) => const String.fromEnvironment("QUAI_EXCHANGE_URL"));
+final exchangeUrlProvider = Provider<String>(
+    (ref) => const String.fromEnvironment("QUAI_EXCHANGE_URL"));
 
 final authServiceProvider = Provider<AuthService>((ref) {
   final url = ref.watch(exchangeUrlProvider);
   if (url.isEmpty) return UnimplementedAuthService();
-  final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 20), receiveTimeout: const Duration(seconds: 30)));
+  final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 30)));
   return TokenExchangeAuthService(
     exchangeUrl: url,
     post: (u, body) async {
       final Response<dynamic> res;
       try {
-        res = await dio.post<dynamic>(u, data: body, options: Options(validateStatus: (_) => true));
+        res = await dio.post<dynamic>(u,
+            data: body, options: Options(validateStatus: (_) => true));
       } on DioException {
         throw AuthFailure("Connexion impossible. / Cannot connect.");
       }
       final status = res.statusCode ?? 0;
-      if (status == 401 || status == 403) throw AuthFailure("Identifiants incorrects. / Incorrect credentials.");
+      if (status == 401 || status == 403)
+        throw AuthFailure("Identifiants incorrects. / Incorrect credentials.");
       final data = res.data;
-      if (status >= 400 || data is! Map) throw AuthFailure("Connexion impossible. / Cannot connect.");
+      if (status >= 400 || data is! Map)
+        throw AuthFailure("Connexion impossible. / Cannot connect.");
       return data.cast<String, dynamic>();
     },
   );
@@ -89,10 +100,11 @@ final sessionExpiredProvider = StateProvider<bool>((ref) => false);
 
 /// Pick-ups proxy URL (the x-api-key stays on the server). Derived from QUAI_EXCHANGE_URL, so
 /// one dart-define configures sign-in and pick-ups; QUAI_MIDDLEWARE_PROXY_URL overrides it.
-final middlewareProxyUrlProvider = Provider<String>((ref) => middlewareProxyUrlFor(
-      exchangeUrl: ref.watch(exchangeUrlProvider),
-      override: const String.fromEnvironment("QUAI_MIDDLEWARE_PROXY_URL"),
-    ));
+final middlewareProxyUrlProvider =
+    Provider<String>((ref) => middlewareProxyUrlFor(
+          exchangeUrl: ref.watch(exchangeUrlProvider),
+          override: const String.fromEnvironment("QUAI_MIDDLEWARE_PROXY_URL"),
+        ));
 
 final middlewareSourceProvider = Provider<MiddlewareSource>((ref) {
   final url = ref.watch(middlewareProxyUrlProvider);
@@ -103,7 +115,9 @@ final middlewareSourceProvider = Provider<MiddlewareSource>((ref) {
 });
 
 final ordersRepositoryProvider = Provider<OrdersRepository>(
-  (ref) => OrdersRepository(api: ref.watch(apiClientProvider), middleware: ref.watch(middlewareSourceProvider)),
+  (ref) => OrdersRepository(
+      api: ref.watch(apiClientProvider),
+      middleware: ref.watch(middlewareSourceProvider)),
 );
 
 /// Orders for the signed-in session plus what could not be loaded.
@@ -147,7 +161,8 @@ final spanDaysProvider = StateProvider<int>((ref) => 7);
 final upcomingWeeksProvider = StateProvider<int>((ref) => 1);
 
 /// SADM - Logistique's selected tab.
-final logistiqueViewProvider = StateProvider<CalendarViewKind>((ref) => CalendarViewKind.delivInst);
+final logistiqueViewProvider =
+    StateProvider<CalendarViewKind>((ref) => CalendarViewKind.delivInst);
 
 // --- Picking tickets and contacts ---------------------------------------------
 
@@ -159,7 +174,8 @@ class SessionTicketTokens implements TicketTokens {
   String? primaryToken() => session.token();
 
   @override
-  String? transferToken(String toNum) => session.toTokens()[toNum.toUpperCase()] ?? session.toTokens()[toNum];
+  String? transferToken(String toNum) =>
+      session.toTokens()[toNum.toUpperCase()] ?? session.toTokens()[toNum];
 
   @override
   String? carrierName() => session.name();
@@ -185,8 +201,20 @@ final ticketServiceProvider = Provider<TicketService>(
   ),
 );
 
+/// Provisional picking list source (orders with no truck yet). Null for anyone but
+/// SADM - Logistique and SuperUser: carriers never get it (the server refuses them too).
+final salesOrderServiceProvider = Provider<SalesOrderService?>((ref) {
+  final session = ref.watch(sessionProvider);
+  final name = session.name();
+  if (name != kLogistique && name != kSuperUserName) return null;
+  final url = salesOrderUrlFor(ref.watch(middlewareProxyUrlProvider));
+  if (url.isEmpty) return null;
+  return SalesOrderService(url: url, token: session.sessionToken);
+});
+
 /// Reads PDF text. The real engine is injected from main.dart.
-final pdfTextExtractorProvider = Provider<PdfTextExtractor>((ref) => const UnavailablePdfTextExtractor());
+final pdfTextExtractorProvider =
+    Provider<PdfTextExtractor>((ref) => const UnavailablePdfTextExtractor());
 
 final contactServiceProvider = Provider<ContactService>(
   (ref) => ContactService(
@@ -197,7 +225,8 @@ final contactServiceProvider = Provider<ContactService>(
 );
 
 /// Ship-to phone + address for an order; null when unknown or not signed in.
-final orderContactProvider = FutureProvider.family<OrderContact?, String>((ref, soNum) async {
+final orderContactProvider =
+    FutureProvider.family<OrderContact?, String>((ref, soNum) async {
   if (ref.watch(sessionProvider).token() == null) return null;
   return ref.watch(contactServiceProvider).contactFor(soNum);
 });
@@ -213,8 +242,10 @@ final urlLauncherProvider = Provider<Future<void> Function(Uri uri)>(
 
 /// Data API base URL (the Railway exchange server) and an OPTIONAL public key (only the old Supabase needed one), supplied at build time with --dart-define.
 /// Empty = backend features report "not configured" instead of faking success.
-final backendUrlProvider = Provider<String>((ref) => const String.fromEnvironment("QUAI_BACKEND_URL"));
-final backendKeyProvider = Provider<String>((ref) => const String.fromEnvironment("QUAI_BACKEND_KEY"));
+final backendUrlProvider =
+    Provider<String>((ref) => const String.fromEnvironment("QUAI_BACKEND_URL"));
+final backendKeyProvider =
+    Provider<String>((ref) => const String.fromEnvironment("QUAI_BACKEND_KEY"));
 
 final backendProvider = Provider<BackendGateway>((ref) {
   final url = ref.watch(backendUrlProvider);
@@ -228,12 +259,16 @@ final backendProvider = Provider<BackendGateway>((ref) {
   );
 });
 
-final receiptsServiceProvider = Provider<ReceiptsService>((ref) => ReceiptsService(gateway: ref.watch(backendProvider)));
-final adjustmentServiceProvider = Provider<AdjustmentService>((ref) => AdjustmentService(gateway: ref.watch(backendProvider)));
-final announcementsServiceProvider =
-    Provider<AnnouncementsService>((ref) => AnnouncementsService(gateway: ref.watch(backendProvider)));
-final historyServiceProvider = Provider<HistoryService>((ref) => HistoryService(gateway: ref.watch(backendProvider)));
-final unsubscribeServiceProvider = Provider<UnsubscribeService>((ref) => UnsubscribeService(gateway: ref.watch(backendProvider)));
+final receiptsServiceProvider = Provider<ReceiptsService>(
+    (ref) => ReceiptsService(gateway: ref.watch(backendProvider)));
+final adjustmentServiceProvider = Provider<AdjustmentService>(
+    (ref) => AdjustmentService(gateway: ref.watch(backendProvider)));
+final announcementsServiceProvider = Provider<AnnouncementsService>(
+    (ref) => AnnouncementsService(gateway: ref.watch(backendProvider)));
+final historyServiceProvider = Provider<HistoryService>(
+    (ref) => HistoryService(gateway: ref.watch(backendProvider)));
+final unsubscribeServiceProvider = Provider<UnsubscribeService>(
+    (ref) => UnsubscribeService(gateway: ref.watch(backendProvider)));
 
 /// Bumped after the SuperUser edits announcements so the banner reloads.
 final announcementsRevisionProvider = StateProvider<int>((ref) => 0);
@@ -253,14 +288,66 @@ final pastOrdersProvider = FutureProvider<List<Order>>((ref) async {
   final session = ref.watch(sessionProvider);
   if (session.token() == null) return <Order>[];
   final name = ref.watch(currentCarrierProvider) ?? session.name() ?? "";
-  final names = session.isSuperUser ? null : historyCarrierNames(carrierByDisplayName(name), name);
-  return ref.watch(historyServiceProvider).past(days: days, carrierNames: names);
+  final names = session.isSuperUser
+      ? null
+      : historyCarrierNames(carrierByDisplayName(name), name);
+  return ref
+      .watch(historyServiceProvider)
+      .past(days: days, carrierNames: names);
 });
 
-/// SuperUser aggregate of every account. Empty unless the session is the SuperUser's.
+/// Server-side cached orders of every truck (GET /admin/orders-aggregate). Null when the SuperUser
+/// is not signed in, the server cannot answer, or it has no data yet: the Admin screen then falls
+/// back to loading truck by truck. Re-read every minute while the screen is open.
+final adminAggregateServiceProvider = Provider<AdminAggregateService?>((ref) {
+  final session = ref.watch(sessionProvider);
+  if (!session.isSuperUser) return null;
+  final url = adminAggregateUrlFor(ref.watch(middlewareProxyUrlProvider));
+  if (url.isEmpty) return null;
+  return AdminAggregateService(url: url, token: session.sessionToken);
+});
+
+final adminAggregateProvider = FutureProvider<AdminAggregate?>((ref) async {
+  final service = ref.watch(adminAggregateServiceProvider);
+  if (service == null) return null;
+  final timer = Timer(const Duration(minutes: 1), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
+  final agg = await service.fetch();
+  return agg != null && agg.hasData ? agg : null;
+});
+
+/// True while a manual "Refresh" is waiting for the server.
+final adminRefreshingProvider = StateProvider<bool>((ref) => false);
+
+/// Asks the server to refresh now, then re-reads the aggregate until it is done (max ~4 min).
+Future<void> refreshAdminAggregate(ProviderContainer ref, {Duration poll = const Duration(seconds: 8), int maxPolls = 30}) async {
+  final service = ref.read(adminAggregateServiceProvider);
+  if (service == null || ref.read(adminRefreshingProvider)) return;
+  ref.read(adminRefreshingProvider.notifier).state = true;
+  try {
+    final r = await service.requestRefresh();
+    if (r == AggregateRefresh.failed || r == AggregateRefresh.rateLimited) {
+      ref.invalidate(adminAggregateProvider);
+      return;
+    }
+    for (var i = 0; i < maxPolls; i++) {
+      await Future<void>.delayed(poll);
+      final agg = await service.fetch();
+      ref.invalidate(adminAggregateProvider);
+      if (agg != null && !agg.refreshing) break;
+    }
+  } finally {
+    ref.read(adminRefreshingProvider.notifier).state = false;
+  }
+}
+
+/// SuperUser aggregate of every account: the server's cache first (one fast request), and only
+/// when that is unavailable the slow per-truck path. Empty unless the session is the SuperUser's.
 final adminLoadProvider = FutureProvider<OrdersLoad>((ref) async {
   final session = ref.watch(sessionProvider);
   if (!session.isSuperUser) return const OrdersLoad();
+  final cached = await ref.watch(adminAggregateProvider.future);
+  if (cached != null) return cached.toOrdersLoad();
   return ref.watch(ordersRepositoryProvider).loadAggregate(
         accounts: carrierAccounts(kCarriers),
         tokensByUsername: session.linkedTokens(),

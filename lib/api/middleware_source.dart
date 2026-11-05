@@ -19,7 +19,8 @@ import "../logic/middleware_events.dart";
 /// remains as an optional override.
 /// Where the proxy lives: the explicit override when given, else the exchange URL
 /// (`https://host/exchange` or `https://host`) with the proxy path. "" when neither is set.
-String middlewareProxyUrlFor({required String exchangeUrl, String override = ""}) {
+String middlewareProxyUrlFor(
+    {required String exchangeUrl, String override = ""}) {
   final o = override.trim();
   if (o.isNotEmpty) return o;
   var base = exchangeUrl.trim();
@@ -27,7 +28,8 @@ String middlewareProxyUrlFor({required String exchangeUrl, String override = ""}
   while (base.endsWith("/")) {
     base = base.substring(0, base.length - 1);
   }
-  if (base.endsWith("/exchange")) base = base.substring(0, base.length - "/exchange".length);
+  if (base.endsWith("/exchange"))
+    base = base.substring(0, base.length - "/exchange".length);
   return "$base/middleware/events";
 }
 
@@ -37,7 +39,8 @@ abstract class MiddlewareSource {
   bool get configured;
 
   /// Never throws: [] on any failure, like the reference.
-  Future<List<MiddlewareEvent>> events(String location, {required DateTime from, required DateTime to});
+  Future<List<MiddlewareEvent>> events(String location,
+      {required DateTime from, required DateTime to});
 }
 
 class UnconfiguredMiddlewareSource implements MiddlewareSource {
@@ -47,7 +50,8 @@ class UnconfiguredMiddlewareSource implements MiddlewareSource {
   bool get configured => false;
 
   @override
-  Future<List<MiddlewareEvent>> events(String location, {required DateTime from, required DateTime to}) async =>
+  Future<List<MiddlewareEvent>> events(String location,
+          {required DateTime from, required DateTime to}) async =>
       <MiddlewareEvent>[];
 }
 
@@ -69,7 +73,8 @@ class ProxyMiddlewareSource implements MiddlewareSource {
   static String _fmt(DateTime d) => d.toIso8601String().substring(0, 10);
 
   @override
-  Future<List<MiddlewareEvent>> events(String location, {required DateTime from, required DateTime to}) async {
+  Future<List<MiddlewareEvent>> events(String location,
+      {required DateTime from, required DateTime to}) async {
     try {
       final t = token();
       final res = await _dio.get<dynamic>(
@@ -88,7 +93,10 @@ class ProxyMiddlewareSource implements MiddlewareSource {
       final data = res.data;
       final list = data is Map ? data["events"] : (data is List ? data : null);
       if (list is! List) return <MiddlewareEvent>[];
-      return list.whereType<Map>().map((e) => MiddlewareEvent.fromJson(e.cast<String, dynamic>())).toList();
+      return list
+          .whereType<Map>()
+          .map((e) => MiddlewareEvent.fromJson(e.cast<String, dynamic>()))
+          .toList();
     } catch (_) {
       return <MiddlewareEvent>[];
     }

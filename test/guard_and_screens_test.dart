@@ -22,20 +22,23 @@ import "package:quai_calendar/state/providers.dart";
 
 Strings _strings() {
   final values = <String, String>{};
-  kOriginalKeyToArb.forEach((dotted, arb) => values[arb] = dotted.split(".").last);
+  kOriginalKeyToArb
+      .forEach((dotted, arb) => values[arb] = dotted.split(".").last);
   return Strings.forTests(values);
 }
 
 class _CountingAuth implements AuthService {
   int calls = 0;
   @override
-  Future<AuthResult> signIn({required Carrier carrier, required String code}) async {
+  Future<AuthResult> signIn(
+      {required Carrier carrier, required String code}) async {
     calls++;
     throw AuthFailure("x");
   }
 
   @override
-  Future<AuthResult> signInSuperUser({required String username, required String password}) async {
+  Future<AuthResult> signInSuperUser(
+      {required String username, required String password}) async {
     calls++;
     throw AuthFailure("x");
   }
@@ -80,7 +83,8 @@ void main() {
       expect(find.byType(CalendarScreen), findsNothing);
     });
 
-    testWidgets("/my-orders with no session redirects to login", (tester) async {
+    testWidgets("/my-orders with no session redirects to login",
+        (tester) async {
       await tester.pumpWidget(_app());
       await tester.pump();
       await _push(tester, "/my-orders");
@@ -90,7 +94,8 @@ void main() {
       expect(find.byType(MyOrdersScreen), findsNothing);
     });
 
-    testWidgets("with a restored session /calendar and /my-orders render", (tester) async {
+    testWidgets("with a restored session /calendar and /my-orders render",
+        (tester) async {
       await tester.pumpWidget(_app(store: _signedIn()));
       await tester.pump();
       await _push(tester, "/calendar");
@@ -99,9 +104,11 @@ void main() {
       expect(find.byType(MyOrdersScreen), findsOneWidget);
     });
 
-    testWidgets("a deep link to /calendar keeps a persisted session", (tester) async {
+    testWidgets("a deep link to /calendar keeps a persisted session",
+        (tester) async {
       tester.binding.platformDispatcher.defaultRouteNameTestValue = "/calendar";
-      addTearDown(tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
+      addTearDown(
+          tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
       await tester.pumpWidget(_app(store: _signedIn()));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -109,9 +116,11 @@ void main() {
       expect(find.byType(LoginScreen), findsNothing);
     });
 
-    testWidgets("a deep link to /calendar with no session lands on login", (tester) async {
+    testWidgets("a deep link to /calendar with no session lands on login",
+        (tester) async {
       tester.binding.platformDispatcher.defaultRouteNameTestValue = "/calendar";
-      addTearDown(tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
+      addTearDown(
+          tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
       await tester.pumpWidget(_app());
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -122,12 +131,15 @@ void main() {
       expect(find.byType(CalendarScreen), findsNothing);
     });
 
-    testWidgets("an expired session sends the user to login with an explanation", (tester) async {
+    testWidgets(
+        "an expired session sends the user to login with an explanation",
+        (tester) async {
       await tester.pumpWidget(_app(store: _signedIn()));
       await tester.pump();
       await _push(tester, "/calendar");
       expect(find.byType(CalendarScreen), findsOneWidget);
-      final container = ProviderScope.containerOf(tester.element(find.byType(CalendarScreen)));
+      final container = ProviderScope.containerOf(
+          tester.element(find.byType(CalendarScreen)));
       container.read(sessionExpiredProvider.notifier).state = true;
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -140,7 +152,8 @@ void main() {
   });
 
   group("unknown routes", () {
-    testWidgets("an unknown path shows NotFound, not another page", (tester) async {
+    testWidgets("an unknown path shows NotFound, not another page",
+        (tester) async {
       await tester.pumpWidget(_app(store: _signedIn()));
       await tester.pump();
       await _push(tester, "/nonexistent");
@@ -149,9 +162,12 @@ void main() {
       expect(find.byKey(const Key("not-found-code")), findsOneWidget);
     });
 
-    testWidgets("an unknown deep link (initial route) shows NotFound", (tester) async {
-      tester.binding.platformDispatcher.defaultRouteNameTestValue = "/nonexistent";
-      addTearDown(tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
+    testWidgets("an unknown deep link (initial route) shows NotFound",
+        (tester) async {
+      tester.binding.platformDispatcher.defaultRouteNameTestValue =
+          "/nonexistent";
+      addTearDown(
+          tester.binding.platformDispatcher.clearDefaultRouteNameTestValue);
       await tester.pumpWidget(_app(store: _signedIn()));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -167,7 +183,9 @@ void main() {
   });
 
   group("/admin", () {
-    testWidgets("an empty submit shows field validation and never calls the backend", (tester) async {
+    testWidgets(
+        "an empty submit shows field validation and never calls the backend",
+        (tester) async {
       final auth = _CountingAuth();
       await tester.pumpWidget(_app(auth: auth));
       await tester.pump();
@@ -175,13 +193,26 @@ void main() {
       expect(find.byType(AdminScreen), findsOneWidget);
       await tester.tap(find.byKey(const Key("admin-submit")));
       await tester.pump();
-      expect(tester.widget<TextField>(find.byKey(const Key("admin-user"))).decoration!.errorText, isNotNull);
-      expect(tester.widget<TextField>(find.byKey(const Key("admin-pass"))).decoration!.errorText, isNotNull);
-      expect(find.byKey(const Key("admin-error")), findsNothing, reason: "no backend error for an empty form");
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key("admin-user")))
+              .decoration!
+              .errorText,
+          isNotNull);
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key("admin-pass")))
+              .decoration!
+              .errorText,
+          isNotNull);
+      expect(find.byKey(const Key("admin-error")), findsNothing,
+          reason: "no backend error for an empty form");
       expect(auth.calls, 0);
     });
 
-    testWidgets("typing clears the field error; a filled form does call the backend", (tester) async {
+    testWidgets(
+        "typing clears the field error; a filled form does call the backend",
+        (tester) async {
       final auth = _CountingAuth();
       await tester.pumpWidget(_app(auth: auth));
       await tester.pump();
@@ -190,7 +221,12 @@ void main() {
       await tester.pump();
       await tester.enterText(find.byKey(const Key("admin-user")), "boss");
       await tester.pump();
-      expect(tester.widget<TextField>(find.byKey(const Key("admin-user"))).decoration!.errorText, isNull);
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const Key("admin-user")))
+              .decoration!
+              .errorText,
+          isNull);
       await tester.enterText(find.byKey(const Key("admin-pass")), "pw");
       await tester.tap(find.byKey(const Key("admin-submit")));
       await tester.pump();
@@ -198,12 +234,15 @@ void main() {
       expect(auth.calls, 1);
     });
 
-    testWidgets("the sign-in page is the light reference style (white, no app bar)", (tester) async {
+    testWidgets(
+        "the sign-in page is the light reference style (white, no app bar)",
+        (tester) async {
       await tester.pumpWidget(_app());
       await tester.pump();
       await _push(tester, "/admin");
       expect(find.byType(AppBar), findsNothing);
-      final scaffold = tester.widget<Scaffold>(find.descendant(of: find.byType(AdminScreen), matching: find.byType(Scaffold)));
+      final scaffold = tester.widget<Scaffold>(find.descendant(
+          of: find.byType(AdminScreen), matching: find.byType(Scaffold)));
       expect(scaffold.backgroundColor, Colors.white);
     });
   });
@@ -214,7 +253,8 @@ void main() {
       await tester.pump();
       await _push(tester, "/unsubscribe?token=abc");
       expect(find.byType(UnsubscribeScreen), findsOneWidget);
-      final scaffold = tester.widget<Scaffold>(find.descendant(of: find.byType(UnsubscribeScreen), matching: find.byType(Scaffold)));
+      final scaffold = tester.widget<Scaffold>(find.descendant(
+          of: find.byType(UnsubscribeScreen), matching: find.byType(Scaffold)));
       expect(scaffold.backgroundColor, Colors.white);
     });
   });

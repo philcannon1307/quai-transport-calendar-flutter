@@ -29,13 +29,16 @@ const String kTokenKey = "quai_contractor_token";
 const String kNameKey = "quai_contractor_name";
 const String kSuperKey = "quai_super_orders";
 const String kLinkedKey = "quai_linked_orders";
+
 /// Reference app also cached credentials here. The port never writes it; the
 /// key is retained only so an old session can be purged on upgrade.
 const String kLinkedCredsKey = "quai_linked_creds";
 const String kToTokensKey = "quai_to_tokens";
+
 /// username -> access token for each linked truck (from the server-side exchange).
 const String kLinkedTokensKey = "quai_linked_tokens";
 const String kTransferLocationsKey = "transfer_locations";
+
 /// Role returned by the server-side token exchange. The client NEVER decides it:
 /// it is stored from the exchange response and only drives what the UI shows.
 /// Enforcement of every privileged action lives on the server (see server-contract.md).
@@ -43,13 +46,17 @@ const String kRoleKey = "quai_role";
 const String kRoleCarrier = "carrier";
 const String kRoleLogistique = "logistique";
 const String kRoleSuperUser = "superuser";
+
 /// Signed session JWT issued by the exchange (carries the role claim). Sent to the
 /// backend as X-Quai-Session so edge functions can verify who is calling.
 const String kSessionTokenKey = "quai_session_token";
 
-bool isKnownRole(String? r) => r == kRoleCarrier || r == kRoleLogistique || r == kRoleSuperUser;
+bool isKnownRole(String? r) =>
+    r == kRoleCarrier || r == kRoleLogistique || r == kRoleSuperUser;
+
 /// Calendar name shown for the SuperUser session.
 const String kSuperUserName = "SuperUser";
+
 /// Where logging out sends the user (reference rule).
 const String kLogoutUrl = "https://lafantaisie-connect.lovable.app";
 const String kLangKey = "quai:lang";
@@ -78,6 +85,7 @@ class Session {
   }
 
   String? name() => store.read(kNameKey);
+
   /// Role from the exchange response (null when signed out).
   String? role() => token() == null ? null : store.read(kRoleKey);
 
@@ -111,7 +119,8 @@ class Session {
 
   void rememberToTokens(Map<String, String> more) {
     if (more.isEmpty) return;
-    store.write(kToTokensKey, jsonEncode(<String, String>{...toTokens(), ...more}));
+    store.write(
+        kToTokensKey, jsonEncode(<String, String>{...toTokens(), ...more}));
   }
 
   /// Start a session. Switching calendars must never leak the previous

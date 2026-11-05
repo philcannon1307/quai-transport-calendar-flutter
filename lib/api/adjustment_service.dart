@@ -7,11 +7,20 @@ import "../logic/ids.dart";
 import "../logic/image_compress.dart";
 import "backend_gateway.dart";
 
-enum AdjustmentFailure { noItems, unreadablePhoto, notConfigured, photoUpload, badRecipient, log, email }
+enum AdjustmentFailure {
+  noItems,
+  unreadablePhoto,
+  notConfigured,
+  photoUpload,
+  badRecipient,
+  log,
+  email
+}
 
 class AdjustmentResult {
   const AdjustmentResult.ok({this.suppressedCount = 0}) : failure = null;
-  const AdjustmentResult.failed(AdjustmentFailure this.failure) : suppressedCount = 0;
+  const AdjustmentResult.failed(AdjustmentFailure this.failure)
+      : suppressedCount = 0;
 
   final AdjustmentFailure? failure;
 
@@ -26,7 +35,10 @@ class AdjustmentResult {
 ///
 /// Routing is `adjustmentRecipients` (group inbox; transfers go to BOTH stores).
 class AdjustmentService {
-  AdjustmentService({required this.gateway, DateTime Function()? clock, String Function()? newId})
+  AdjustmentService(
+      {required this.gateway,
+      DateTime Function()? clock,
+      String Function()? newId})
       : _clock = clock ?? DateTime.now,
         _newId = newId ?? newUuid4;
 
@@ -50,11 +62,14 @@ class AdjustmentService {
     List<String> transferLocations = const <String>[],
   }) async {
     final items = filledRows(rows);
-    if (items.isEmpty) return const AdjustmentResult.failed(AdjustmentFailure.noItems);
-    if (!gateway.configured) return const AdjustmentResult.failed(AdjustmentFailure.notConfigured);
+    if (items.isEmpty)
+      return const AdjustmentResult.failed(AdjustmentFailure.noItems);
+    if (!gateway.configured)
+      return const AdjustmentResult.failed(AdjustmentFailure.notConfigured);
 
     final kind = adjustmentKind(orderNum);
-    final recipients = adjustmentRecipients(carrierName, kind == "TO" ? transferLocations : const <String>[]);
+    final recipients = adjustmentRecipients(
+        carrierName, kind == "TO" ? transferLocations : const <String>[]);
     if (recipients.isEmpty || !recipients.every(isGroupeQlAddress)) {
       return const AdjustmentResult.failed(AdjustmentFailure.badRecipient);
     }
@@ -70,7 +85,8 @@ class AdjustmentService {
       } on ImageCompressException {
         return const AdjustmentResult.failed(AdjustmentFailure.unreadablePhoto);
       }
-      final path = "adjustments/${isoDate(now)}/${_newId()}-${uploadFileName(photoName)}";
+      final path =
+          "adjustments/${isoDate(now)}/${_newId()}-${uploadFileName(photoName)}";
       try {
         photoUrl = await gateway.uploadFile(
           bucket: "receipts",

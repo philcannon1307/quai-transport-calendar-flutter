@@ -16,7 +16,8 @@ Future<bool?> showAdjustmentSheet(BuildContext context, Order order) {
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: AdjustmentSheet(order: order),
     ),
   );
@@ -35,7 +36,8 @@ class _RowCtl {
   final TextEditingController from = TextEditingController();
   final TextEditingController to = TextEditingController();
   final TextEditingController reason = TextEditingController();
-  AdjustmentRow toRow() => AdjustmentRow(item: item.text, from: from.text, to: to.text, reason: reason.text);
+  AdjustmentRow toRow() => AdjustmentRow(
+      item: item.text, from: from.text, to: to.text, reason: reason.text);
   void dispose() {
     item.dispose();
     from.dispose();
@@ -69,17 +71,23 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
       case AdjustmentFailure.noItems:
         return bi(s, "Ajoutez au moins un article.", "Add at least one item.");
       case AdjustmentFailure.unreadablePhoto:
-        return bi(s, "Cette photo est illisible. Reprenez-la.", "This photo cannot be read. Take it again.");
+        return bi(s, "Cette photo est illisible. Reprenez-la.",
+            "This photo cannot be read. Take it again.");
       case AdjustmentFailure.notConfigured:
-        return bi(s, "Le serveur d'envoi n'est pas configuré.", "The upload server is not configured.");
+        return bi(s, "Le serveur d'envoi n'est pas configuré.",
+            "The upload server is not configured.");
       case AdjustmentFailure.photoUpload:
-        return bi(s, "Échec du téléversement de la photo. Réessayez.", "Photo upload failed. Please try again.");
+        return bi(s, "Échec du téléversement de la photo. Réessayez.",
+            "Photo upload failed. Please try again.");
       case AdjustmentFailure.badRecipient:
-        return bi(s, "Aucun destinataire valide pour ce transporteur.", "No valid recipient for this carrier.");
+        return bi(s, "Aucun destinataire valide pour ce transporteur.",
+            "No valid recipient for this carrier.");
       case AdjustmentFailure.log:
-        return bi(s, "Le changement n'a pas pu être enregistré. Réessayez.", "The change could not be saved. Please try again.");
+        return bi(s, "Le changement n'a pas pu être enregistré. Réessayez.",
+            "The change could not be saved. Please try again.");
       case AdjustmentFailure.email:
-        return bi(s, "Le courriel n'a pas pu être envoyé. Réessayez.", "The email could not be sent. Please try again.");
+        return bi(s, "Le courriel n'a pas pu être envoyé. Réessayez.",
+            "The email could not be sent. Please try again.");
     }
   }
 
@@ -100,8 +108,10 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
           photoName: _photo?.name ?? "photo.jpg",
           transferLocations: o.isTransfer
               ? <String>[
-                  if ((o.shippingLocationName ?? "").isNotEmpty) o.shippingLocationName!,
-                  if ((o.saleLocationName ?? "").isNotEmpty) o.saleLocationName!,
+                  if ((o.shippingLocationName ?? "").isNotEmpty)
+                    o.shippingLocationName!,
+                  if ((o.saleLocationName ?? "").isNotEmpty)
+                    o.saleLocationName!,
                 ]
               : const <String>[],
         );
@@ -109,7 +119,8 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
     if (res.isOk) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(res.suppressedCount > 0
-            ? bi(s, "Changement enregistré; un destinataire s'est désabonné.", "Change logged; one recipient had unsubscribed.")
+            ? bi(s, "Changement enregistré; un destinataire s'est désabonné.",
+                "Change logged; one recipient had unsubscribed.")
             : bi(s, "Changement signalé ✓", "Change reported ✓")),
       ));
       Navigator.of(context).pop(true);
@@ -132,13 +143,18 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Text(bi(s, "Signaler un changement — ${o.soNum}", "Report a change — ${o.soNum}"),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(
+                bi(s, "Signaler un changement — ${o.soNum}",
+                    "Report a change — ${o.soNum}"),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 12),
             TextField(
               key: const Key("adj-name"),
               controller: _name,
-              decoration: InputDecoration(labelText: s.t("receipts.driver"), border: const OutlineInputBorder()),
+              decoration: InputDecoration(
+                  labelText: s.t("receipts.driver"),
+                  border: const OutlineInputBorder()),
             ),
             const SizedBox(height: 12),
             for (var i = 0; i < _rows.length; i++) ...<Widget>[
@@ -146,13 +162,16 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
                 key: Key("adj-row-$i"),
                 padding: const EdgeInsets.all(10),
                 margin: const EdgeInsets.only(bottom: 10),
-                decoration: BoxDecoration(border: Border.all(color: const Color(0x22000000)), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0x22000000)),
+                    borderRadius: BorderRadius.circular(10)),
                 child: Column(
                   children: <Widget>[
                     TextField(
                       key: Key("adj-item-$i"),
                       controller: _rows[i].item,
-                      decoration: InputDecoration(labelText: bi(s, "Article", "Item"), isDense: true),
+                      decoration: InputDecoration(
+                          labelText: bi(s, "Article", "Item"), isDense: true),
                     ),
                     Row(
                       children: <Widget>[
@@ -160,7 +179,9 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
                           child: TextField(
                             key: Key("adj-from-$i"),
                             controller: _rows[i].from,
-                            decoration: InputDecoration(labelText: bi(s, "Prévu", "Planned"), isDense: true),
+                            decoration: InputDecoration(
+                                labelText: bi(s, "Prévu", "Planned"),
+                                isDense: true),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -168,7 +189,9 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
                           child: TextField(
                             key: Key("adj-to-$i"),
                             controller: _rows[i].to,
-                            decoration: InputDecoration(labelText: bi(s, "Réel", "Actual"), isDense: true),
+                            decoration: InputDecoration(
+                                labelText: bi(s, "Réel", "Actual"),
+                                isDense: true),
                           ),
                         ),
                       ],
@@ -176,7 +199,8 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
                     TextField(
                       key: Key("adj-reason-$i"),
                       controller: _rows[i].reason,
-                      decoration: InputDecoration(labelText: bi(s, "Raison", "Reason"), isDense: true),
+                      decoration: InputDecoration(
+                          labelText: bi(s, "Raison", "Reason"), isDense: true),
                     ),
                   ],
                 ),
@@ -186,7 +210,8 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 key: const Key("adj-add"),
-                onPressed: _busy ? null : () => setState(() => _rows.add(_RowCtl())),
+                onPressed:
+                    _busy ? null : () => setState(() => _rows.add(_RowCtl())),
                 icon: const Icon(Icons.add),
                 label: Text(bi(s, "Ajouter un article", "Add an item")),
               ),
@@ -195,7 +220,9 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
               key: const Key("adj-note"),
               controller: _note,
               maxLines: 2,
-              decoration: InputDecoration(labelText: s.t("receipts.note"), border: const OutlineInputBorder()),
+              decoration: InputDecoration(
+                  labelText: s.t("receipts.note"),
+                  border: const OutlineInputBorder()),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
@@ -207,11 +234,15 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
                       if (p != null && mounted) setState(() => _photo = p);
                     },
               icon: const Icon(Icons.photo_camera_outlined),
-              label: Text(_photo == null ? s.t("receipts.choosePhoto") : _photo!.name),
+              label: Text(
+                  _photo == null ? s.t("receipts.choosePhoto") : _photo!.name),
             ),
             if (_error != null) ...<Widget>[
               const SizedBox(height: 10),
-              Text(_error!, key: const Key("adj-error"), style: const TextStyle(color: Color(0xFF9B1C1C), fontSize: 13)),
+              Text(_error!,
+                  key: const Key("adj-error"),
+                  style:
+                      const TextStyle(color: Color(0xFF9B1C1C), fontSize: 13)),
             ],
             const SizedBox(height: 14),
             FilledButton(
@@ -219,7 +250,9 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
               onPressed: _busy ? null : () => _send(s),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text(_busy ? s.t("receipts.sending") : bi(s, "Envoyer le changement", "Send change")),
+                child: Text(_busy
+                    ? s.t("receipts.sending")
+                    : bi(s, "Envoyer le changement", "Send change")),
               ),
             ),
           ],

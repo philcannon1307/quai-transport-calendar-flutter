@@ -37,7 +37,9 @@ const List<Carrier> kCarriers = <Carrier>[
     group: "Gooseneck",
     truck: "3",
     backendUsername: "RIDEAU GOOSENECK",
-    linkedTrucks: <LinkedTruck>[LinkedTruck(displayName: "OPEN GOOSENECK", truck: "4")],
+    linkedTrucks: <LinkedTruck>[
+      LinkedTruck(displayName: "OPEN GOOSENECK", truck: "4")
+    ],
   ),
   Carrier(displayName: "DA TRANSPORT", group: "Externe", truck: "58"),
   Carrier(displayName: "LANCEZ TRANSPORT", group: "Externe", truck: "59"),
@@ -67,8 +69,12 @@ List<CarrierAccount> carrierAccounts(List<Carrier> carriers) {
   final out = <CarrierAccount>[];
   for (final c in carriers) {
     final rows = <CarrierAccount>[
-      CarrierAccount(displayName: c.displayName, username: c.backendUsername ?? c.displayName, truck: c.truck),
-      ...c.linkedTrucks.map((t) => CarrierAccount(displayName: c.displayName, username: t.displayName, truck: t.truck)),
+      CarrierAccount(
+          displayName: c.displayName,
+          username: c.backendUsername ?? c.displayName,
+          truck: c.truck),
+      ...c.linkedTrucks.map((t) => CarrierAccount(
+          displayName: c.displayName, username: t.displayName, truck: t.truck)),
     ];
     for (final r in rows) {
       if (seen.add(r.username)) out.add(r);
@@ -79,7 +85,9 @@ List<CarrierAccount> carrierAccounts(List<Carrier> carriers) {
 
 String calendarName(String name) {
   for (final c in kCarriers) {
-    if (c.displayName == name || c.backendUsername == name || c.linkedTrucks.any((t) => t.displayName == name)) {
+    if (c.displayName == name ||
+        c.backendUsername == name ||
+        c.linkedTrucks.any((t) => t.displayName == name)) {
       return c.displayName;
     }
   }
@@ -108,8 +116,21 @@ String adjustmentInbox(String name) {
 }
 
 const Map<String, String> _accentFolds = <String, String>{
-  "à": "a", "â": "a", "ä": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
-  "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
+  "à": "a",
+  "â": "a",
+  "ä": "a",
+  "é": "e",
+  "è": "e",
+  "ê": "e",
+  "ë": "e",
+  "î": "i",
+  "ï": "i",
+  "ô": "o",
+  "ö": "o",
+  "ù": "u",
+  "û": "u",
+  "ü": "u",
+  "ç": "c",
 };
 
 String _fold(String s) {
@@ -126,14 +147,17 @@ String? locationInbox(String location) {
   if (n.contains("lindsay")) return kGroupInbox["Lindsay"];
   if (n.contains("laurier")) return kGroupInbox["Mt-Laurier"];
   if (n.contains("quebec")) return kGroupInbox["Québec"];
-  if (RegExp(r"sherbrooke|estrie").hasMatch(n)) return kGroupInbox["Sherbrooke"];
+  if (RegExp(r"sherbrooke|estrie").hasMatch(n))
+    return kGroupInbox["Sherbrooke"];
   return null;
 }
 
 /// Recipients for a change report: transfers go to both stores involved;
 /// otherwise the carrier's group inbox.
-List<String> adjustmentRecipients(String carrier, [List<String> transferLocations = const <String>[]]) {
-  final stores = transferLocations.map(locationInbox).whereType<String>().toList();
+List<String> adjustmentRecipients(String carrier,
+    [List<String> transferLocations = const <String>[]]) {
+  final stores =
+      transferLocations.map(locationInbox).whereType<String>().toList();
   final list = stores.isNotEmpty ? stores : <String>[adjustmentInbox(carrier)];
   final seen = <String>{};
   return list.where(seen.add).toList();
@@ -144,13 +168,17 @@ List<String> adjustmentRecipients(String carrier, [List<String> transferLocation
 List<LinkedTruck> loadableLinkedTrucks(Carrier? carrier) {
   final linked = carrier?.linkedTrucks ?? const <LinkedTruck>[];
   if (carrier?.displayName == kLogistique) {
-    return linked.where((t) => RegExp("GOOSENECK", caseSensitive: false).hasMatch(t.displayName)).toList();
+    return linked
+        .where((t) =>
+            RegExp("GOOSENECK", caseSensitive: false).hasMatch(t.displayName))
+        .toList();
   }
   return linked.toList();
 }
 
 /// Only events whose title starts with an SADM truck ("SADM - …") belong to SADM.
-bool isSadmEventTitle(String title) => RegExp(r"^\s*SADM\s*-", caseSensitive: false).hasMatch(title);
+bool isSadmEventTitle(String title) =>
+    RegExp(r"^\s*SADM\s*-", caseSensitive: false).hasMatch(title);
 
 Carrier? carrierByDisplayName(String name) {
   for (final c in kCarriers) {
