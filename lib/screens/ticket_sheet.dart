@@ -7,21 +7,26 @@ import "package:flutter_riverpod/flutter_riverpod.dart";
 import "../api/ticket_service.dart";
 import "../i18n/i18n.dart";
 import "../logic/ticket_progress.dart";
+import "../models/order.dart";
 import "../pdf/pdf_ports.dart";
 import "../state/providers.dart";
 import "../theme.dart";
+import "../widgets/order_change.dart";
 
-Future<void> showTicketSheet(BuildContext context, String orderNum) {
+Future<void> showTicketSheet(BuildContext context, String orderNum, {Order? order}) {
   return Navigator.of(context).push<void>(
-    MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => TicketSheet(orderNum: orderNum)),
+    MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => TicketSheet(orderNum: orderNum, order: order)),
   );
 }
 
 /// Picking-ticket viewer: honest progress while NetSuite builds the PDF,
 /// print / download, and a big red Close that is always reachable.
 class TicketSheet extends ConsumerStatefulWidget {
-  const TicketSheet({super.key, required this.orderNum});
+  const TicketSheet({super.key, required this.orderNum, this.order});
   final String orderNum;
+
+  /// The calendar card this ticket was opened from. Without it the "Change order" action is hidden.
+  final Order? order;
 
   @override
   ConsumerState<TicketSheet> createState() => _TicketSheetState();
@@ -183,6 +188,20 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
                   icon: const Icon(Icons.download_outlined, size: 18),
                   label: const Text("Télécharger / Download"),
                 ),
+                if (widget.order != null)
+                  FilledButton.tonalIcon(
+                    key: const Key("ticket-change"),
+                    onPressed: () => showOrderChangeScreen(context, widget.order!),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text("Modifier la commande / Change order"),
+                  ),
+                OutlinedButton.icon(
+                  key: const Key("ticket-history"),
+                  onPressed: () => showOrderHistory(context, widget.orderNum),
+                  icon: const Icon(Icons.history, size: 18),
+                  label: const Text("Historique / History"),
+                ),
+                TicketChangedBadge(orderNum: widget.orderNum),
               ],
             ),
           ),
