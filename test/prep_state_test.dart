@@ -15,6 +15,7 @@ import "package:quai_calendar/i18n/i18n.dart";
 import "package:quai_calendar/l10n/key_map.dart";
 import "package:quai_calendar/logic/calendar_views.dart";
 import "package:quai_calendar/logic/contact_parser.dart";
+import "package:quai_calendar/logic/map_embed.dart";
 import "package:quai_calendar/logic/prep_state.dart";
 import "package:quai_calendar/models/order.dart";
 import "package:quai_calendar/screens/calendar_screen.dart";
@@ -729,6 +730,78 @@ void main() {
         });
       }
     }
+  });
+
+  group("embedded map in the order detail", () {
+    Future<void> open(WidgetTester tester, double w,
+        {List<Override> extra = const <Override>[]}) async {
+      _size(tester, w);
+      await tester.pumpWidget(_host(FakePrepTransport(), extra: extra));
+      await _settle(tester);
+      final card = find.byKey(const Key("card-SOA"));
+      await tester.tapAt(tester.getTopLeft(card) + const Offset(40, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    test("query: usable addresses pass, empty / too short / no letters do not",
+        () {
+      expect(mapQueryFor("12 rue Principale, Gatineau, QC J8X 1A1"),
+          "12 rue Principale, Gatineau, QC J8X 1A1");
+      expect(mapQueryFor("  12   rue Principale  "), "12 rue Principale");
+      expect(mapQueryFor(null), isNull);
+      expect(mapQueryFor("  "), isNull);
+      expect(mapQueryFor("12"), isNull);
+      expect(mapQueryFor("1234 5678"), isNull);
+    });
+
+    test("url: keyless fallback without a key, official Embed API with one",
+        () {
+      expect(mapEmbedUrl("1 rue A, Hull", key: ""),
+          "https://maps.google.com/maps?q=${Uri.encodeComponent("1 rue A, Hull")}&output=embed");
+      expect(mapEmbedUrl("1 rue A, Hull", key: "K1"),
+          "https://www.google.com/maps/embed/v1/place?key=K1&q=${Uri.encodeComponent("1 rue A, Hull")}");
+    });
+
+    for (final w in <double>[390, 1440]) {
+      testWidgets(
+          "map shown under the call row with the address, plus the open-in-Maps button ($w)",
+          (tester) async {
+        await open(tester, w);
+        expect(find.byKey(const Key("detail-address")), findsOneWidget);
+        expect(find.byKey(const Key("detail-map")), findsOneWidget);
+        expect(find.byKey(const Key("map-frame")), findsOneWidget);
+        expect(tester.getSize(find.byKey(const Key("map-frame"))).height,
+            w < 700 ? 220 : 360);
+        expect(tester.widget<Text>(find.byKey(const Key("map-frame-url"))).data,
+            contains(Uri.encodeComponent("12 rue Principale, Gatineau")));
+        expect(find.byKey(const Key("detail-call")), findsOneWidget);
+        expect(find.byKey(const Key("detail-maps")), findsOneWidget);
+        expect(find.text("Ouvrir dans Maps"), findsOneWidget);
+        expect(find.byKey(const Key("detail-map-missing")), findsNothing);
+        expect(
+            tester.getTopLeft(find.byKey(const Key("detail-map"))).dy,
+            greaterThan(
+                tester.getBottomLeft(find.byKey(const Key("detail-maps"))).dy));
+      });
+    }
+
+    testWidgets(
+        "no usable address: no map, a short message instead, button disabled",
+        (tester) async {
+      await open(tester, 390, extra: <Override>[
+        orderContactProvider.overrideWith((ref, soNum) async =>
+            const OrderContact(phone: "819 555-1234", address: "")),
+      ]);
+      expect(find.byKey(const Key("detail-map")), findsNothing);
+      expect(find.byKey(const Key("map-frame")), findsNothing);
+      expect(find.byKey(const Key("detail-map-missing")), findsOneWidget);
+      expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key("detail-maps")))
+              .onPressed,
+          isNull);
+    });
   });
 }
 
