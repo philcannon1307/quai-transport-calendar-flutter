@@ -52,6 +52,26 @@ class _Api implements OrdersApi {
   }
 }
 
+/// Job service stand-in that serves slowly and records how many requests were in flight at once.
+class _SlowApi implements OrdersApi {
+  int inFlight = 0, peak = 0;
+  final Set<String> failOnce = <String>{};
+  final List<String> calls = <String>[];
+  @override
+  Future<List<Order>> shipOrders(String token, {String? carrierName}) async {
+    calls.add(token);
+    inFlight++;
+    if (inFlight > peak) peak = inFlight;
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    inFlight--;
+    if (failOnce.remove(token)) throw const OrdersFetchException(500);
+    return <Order>[];
+  }
+
+  @override
+  Future<List<Order>> transferOrders(String token, {String? carrierName}) async => <Order>[];
+}
+
 class _Mw implements MiddlewareSource {
   _Mw(this.list);
   final List<MiddlewareEvent> list;
@@ -166,6 +186,34 @@ void main() {
       expect(load.failedTrucks, isEmpty);
       expect(load.orders.length, 2);
       expect(load.orders.map((o) => o.carrierName).toSet(), <String?>{"InterQL"});
+    });
+  });
+
+  group("admin aggregate load", () {
+    test("never has more than kAggregateConcurrency trucks in flight, and still loads all of them", () async {
+      final api = _SlowApi();
+      final repo = OrdersRepository(api: api, middleware: const UnconfiguredMiddlewareSource());
+      final accounts = carrierAccounts(kCarriers.toList());
+      final tokens = <String, String>{for (final a in accounts) a.username: "tok-${a.username}"};
+      final load = await repo.loadAggregate(accounts: accounts, tokensByUsername: tokens);
+      expect(accounts.length, greaterThan(10));
+      expect(api.peak, lessThanOrEqualTo(kAggregateConcurrency));
+      expect(api.peak, greaterThan(1));
+      expect(api.calls.length, accounts.length);
+      expect(load.failedTrucks, isEmpty);
+    });
+
+    test("a transient failure is retried once; a truck with no token is reported as not loaded", () async {
+      final api = _SlowApi();
+      final repo = OrdersRepository(api: api, middleware: const UnconfiguredMiddlewareSource());
+      final accounts = carrierAccounts(kCarriers.toList());
+      final tokens = <String, String>{for (final a in accounts) a.username: "tok-${a.username}"};
+      api.failOnce.add(tokens[accounts.first.username]!);
+      final missing = accounts.last.username;
+      tokens.remove(missing);
+      final load = await repo.loadAggregate(accounts: accounts, tokensByUsername: tokens);
+      expect(load.failedTrucks, <String>[missing]);
+      expect(api.calls.where((c) => c == "tok-${accounts.first.username}").length, 2);
     });
   });
 

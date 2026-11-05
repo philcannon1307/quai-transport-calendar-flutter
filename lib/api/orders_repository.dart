@@ -186,7 +186,9 @@ class OrdersRepository {
     final toTokens = <String, String>{};
     var unauthorized = false;
 
-    final lists = await Future.wait<List<Order>>(accounts.map((a) async {
+    // The job service answers ONE request at a time (~4-5 s each), so firing every truck at once makes the
+    // later ones wait past the 30 s receive timeout and show up as "Non chargés". Keep only a few in flight.
+    final lists = await _mapLimited<CarrierAccount, List<Order>>(accounts, kAggregateConcurrency, (a) async {
       final token = tokensByUsername[a.username];
       if (token == null) {
         failed.add(a.username);
@@ -194,9 +196,9 @@ class OrdersRepository {
       }
       final name = calendarName(a.displayName);
       try {
-        final ship = await api.shipOrders(token, carrierName: name);
+        final ship = await _retryOnce(() => api.shipOrders(token, carrierName: name));
         final transfers = _transferAccounts.hasMatch(a.username)
-            ? await api.transferOrders(token, carrierName: name)
+            ? await _retryOnce(() => api.transferOrders(token, carrierName: name))
             : <Order>[];
         for (final t in transfers) {
           if (t.isTransfer) toTokens[t.soNum.toUpperCase()] = token;
@@ -210,7 +212,7 @@ class OrdersRepository {
         failed.add(a.username);
         return <Order>[];
       }
-    }));
+    });
 
     final merged = <Order>[];
     final seen = <String>{};
@@ -221,4 +223,33 @@ class OrdersRepository {
     }
     return OrdersLoad(orders: merged, toTokens: toTokens, failedTrucks: failed, unauthorized: unauthorized);
   }
+}
+
+/// How many trucks the Admin view loads at the same time (the job service serves them one by one anyway).
+const int kAggregateConcurrency = 3;
+
+/// One more try for a transient failure; a 401/403 is final.
+Future<T> _retryOnce<T>(Future<T> Function() run) async {
+  try {
+    return await run();
+  } on UnauthorizedException {
+    rethrow;
+  } catch (_) {
+    return run();
+  }
+}
+
+/// Like Future.wait(items.map(run)) but at most [limit] running at once; result order = input order.
+Future<List<R>> _mapLimited<T, R>(List<T> items, int limit, Future<R> Function(T) run) async {
+  final results = List<R?>.filled(items.length, null);
+  var next = 0;
+  Future<void> worker() async {
+    while (next < items.length) {
+      final i = next++;
+      results[i] = await run(items[i]);
+    }
+  }
+
+  await Future.wait(<Future<void>>[for (var k = 0; k < (limit < items.length ? limit : items.length); k++) worker()]);
+  return results.cast<R>();
 }
