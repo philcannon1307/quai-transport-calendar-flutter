@@ -123,7 +123,7 @@ class AdminAggregateService {
 
   Options get _options {
     final t = token();
-    return Options(headers: <String, String>{
+    return Options(validateStatus: (_) => true, headers: <String, String>{
       if (t != null && t.isNotEmpty) "Authorization": "Bearer $t",
       "Cache-Control": "no-store",
     });

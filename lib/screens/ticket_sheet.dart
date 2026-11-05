@@ -27,8 +27,11 @@ Future<void> showTicketSheet(BuildContext context, String orderNum,
 /// Picking-ticket viewer: honest progress while NetSuite builds the PDF,
 /// print / download, and a big red Close that is always reachable.
 class TicketSheet extends ConsumerStatefulWidget {
-  const TicketSheet({super.key, required this.orderNum});
+  const TicketSheet({super.key, required this.orderNum, this.order});
   final String orderNum;
+
+  /// The calendar / list order, when known: enables "Change order" on the ticket.
+  final Order? order;
 
   @override
   ConsumerState<TicketSheet> createState() => _TicketSheetState();

@@ -29,11 +29,32 @@ const List<ChangeField> kChangeFields = <ChangeField>[
 List<ChangeField> fieldsFor(Order order) =>
     kChangeFields.where((f) => order.isTransfer ? !f.orderOnly : !f.transferOnly).toList();
 
+/// Calendar names can end with a stray "/" (e.g. "SADM - Jayson/"): not a value worth saving.
+String _tidy(String? v) => (v ?? "").replaceAll(RegExp(r"[\s/]+$"), "");
+
+/// Latest saved value per field from the history (any order of groups). Only the given keys are returned.
+Map<String, String> latestSavedValues(List<ChangeGroup> groups, Iterable<String> keys) {
+  final wanted = keys.toSet();
+  final out = <String, String>{};
+  final at = <String, String>{};
+  for (final g in groups) {
+    for (final f in g.fields) {
+      if (!wanted.contains(f.field)) continue;
+      final prev = at[f.field];
+      if (prev == null || g.changedAt.compareTo(prev) >= 0) {
+        at[f.field] = g.changedAt;
+        out[f.field] = f.newValue;
+      }
+    }
+  }
+  return out;
+}
+
 /// What the ticket shows today, per field key. Unknown values are empty strings.
 Map<String, String> currentValues(Order o) => <String, String>{
       "ship_date": o.shipDate ?? o.date,
-      "truck": o.truckName ?? "",
-      "carrier": o.carrierName ?? "",
+      "truck": _tidy(o.truckName),
+      "carrier": _tidy(o.carrierName),
       "customer": o.customer ?? "",
       "address": "",
       "phone": "",
