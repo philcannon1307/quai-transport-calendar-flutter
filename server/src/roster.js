@@ -5,6 +5,9 @@
 export const SUPERUSER_NAME = "SuperUser";
 export const LOGISTIQUE = "SADM - Logistique";
 
+/** A logistics login: "SADM - Logistique" or any store unit named "<unit> - Logistique" (Québec - Logistique, ...). */
+export const isLogistiqueUnit = (name) => name === LOGISTIQUE || /^[^\s].* - logistique$/i.test(String(name ?? "").trim());
+
 const lt = (displayName, truck) => ({ displayName, truck });
 
 export const CARRIERS = [

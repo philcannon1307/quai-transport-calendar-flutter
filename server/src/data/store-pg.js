@@ -120,6 +120,60 @@ export class PgStore {
     const rows = (await this.q("select order_num, count(distinct change_id)::int as count, max(changed_at) as last_at, (array_agg(changed_by order by changed_at desc))[1] as last_by from order_changes where order_num = any($1::text[]) group by order_num", [nums])).rows;
     return Object.fromEntries(rows.map((r) => [r.order_num, { count: r.count, lastAt: r.last_at, lastBy: r.last_by }]));
   }
+
+  // Order prepared state: tables are created on first use (create table if not exists), like the aggregate cache,
+  // so no manual migration is required; db/migrations/2026-11-06-order-prep-state.sql is the same DDL for review.
+  async ensurePrepTables() {
+    if (!this.prepReady) {
+      this.prepReady = (async () => {
+        await this.q("create table if not exists order_prep_state (order_num text not null, service_date text not null default '' check (service_date = '' or service_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'), prepared boolean not null, updated_by text not null default '', updated_label text not null default '', updated_at timestamptz not null default now(), primary key (order_num, service_date))");
+        await this.q("create index if not exists order_prep_state_date_idx on order_prep_state (service_date)");
+        await this.q("create table if not exists order_prep_history (id bigserial primary key, order_num text not null, service_date text not null default '', prepared boolean not null, actor text not null, label text not null default '', at timestamptz not null default now())");
+        await this.q("create index if not exists order_prep_history_order_idx on order_prep_history (order_num, at desc)");
+      })().catch((e) => { this.prepReady = null; throw e; });
+    }
+    return this.prepReady;
+  }
+  async listPrepStates({ from, to, nums }) {
+    await this.ensurePrepTables();
+    if (nums) return (await this.q("select order_num, service_date, prepared, updated_by, updated_label, updated_at from order_prep_state where order_num = any($1::text[])", [nums])).rows;
+    return (await this.q("select order_num, service_date, prepared, updated_by, updated_label, updated_at from order_prep_state where service_date >= $1 and service_date <= $2", [from, to])).rows;
+  }
+  /** One transaction with a per-key advisory lock: two simultaneous taps cannot both "change" the state. */
+  async setPrepState({ orderNum, date, prepared, actor, label, atIso }) {
+    await this.ensurePrepTables();
+    const c = await this.pool.connect();
+    try {
+      await c.query("begin");
+      await c.query("select pg_advisory_xact_lock(hashtext($1))", ["prep:" + orderNum + "|" + date]);
+      const cur = (await c.query("select order_num, service_date, prepared, updated_by, updated_label, updated_at from order_prep_state where order_num = $1 and service_date = $2", [orderNum, date])).rows[0];
+      if ((cur ? cur.prepared : false) === prepared) {
+        await c.query("rollback");
+        return { changed: false, row: cur ?? { order_num: orderNum, service_date: date, prepared: false, updated_by: "", updated_label: "", updated_at: null } };
+      }
+      await c.query(
+        "insert into order_prep_state (order_num, service_date, prepared, updated_by, updated_label, updated_at) values ($1,$2,$3,$4,$5,$6) on conflict (order_num, service_date) do update set prepared = excluded.prepared, updated_by = excluded.updated_by, updated_label = excluded.updated_label, updated_at = excluded.updated_at",
+        [orderNum, date, prepared, actor, label, atIso],
+      );
+      await c.query("insert into order_prep_history (order_num, service_date, prepared, actor, label, at) values ($1,$2,$3,$4,$5,$6)", [orderNum, date, prepared, actor, label, atIso]);
+      await c.query("commit");
+      return { changed: true, row: { order_num: orderNum, service_date: date, prepared, updated_by: actor, updated_label: label, updated_at: atIso } };
+    } catch (e) {
+      try { await c.query("rollback"); } catch { /* connection already gone */ }
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
+  async listPrepHistory(num, { date, sinceIso, limit }) {
+    await this.ensurePrepTables();
+    return (await this.q("select service_date, prepared, actor, label, at from order_prep_history where order_num = $1 and at >= $2 and ($3::text is null or service_date = $3) order by at desc, id desc limit $4", [num, sinceIso, date, limit])).rows;
+  }
+  async prunePrep(historyBeforeIso, stateBeforeIso) {
+    await this.ensurePrepTables();
+    await this.q("delete from order_prep_history where at < $1", [historyBeforeIso]);
+    await this.q("delete from order_prep_state where updated_at < $1", [stateBeforeIso]);
+  }
   async listDivisionContacts() { return (await this.q("select division, emails, location_keywords, updated_by, updated_at from division_contacts order by division")).rows; }
   async upsertDivisionContact(r) {
     await this.q("insert into division_contacts (division, emails, location_keywords, updated_by) values ($1,$2::text[],$3::text[],$4) on conflict (division) do update set emails = excluded.emails, location_keywords = excluded.location_keywords, updated_by = excluded.updated_by, updated_at = now()", [r.division, r.emails, r.location_keywords, r.updated_by]);

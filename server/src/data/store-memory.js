@@ -15,6 +15,8 @@ export class MemoryStore {
     this.tokens = new Map(); // email -> { token, used_at }
     this.orderChanges = [];
     this.divisionContacts = new Map();
+    this.prepStates = new Map(); // "NUM|date" -> row
+    this.prepHistory = [];
   }
 
   async ping() { return true; }
@@ -124,6 +126,30 @@ export class MemoryStore {
     }
     for (const k of Object.keys(out)) { out[k].count = out[k].ids.size; delete out[k].ids; }
     return out;
+  }
+
+  // order prepared state (+ history)
+  async listPrepStates({ from, to, nums }) {
+    return [...this.prepStates.values()].filter((r) => (nums ? nums.includes(r.order_num) : r.service_date >= from && r.service_date <= to)).map((r) => ({ ...r }));
+  }
+  /** Atomic (no await inside): compare, then write state + history. */
+  async setPrepState({ orderNum, date, prepared, actor, label, atIso }) {
+    const key = orderNum + "|" + date;
+    const cur = this.prepStates.get(key);
+    if ((cur ? cur.prepared : false) === prepared) {
+      return { changed: false, row: cur ? { ...cur } : { order_num: orderNum, service_date: date, prepared: false, updated_by: "", updated_label: "", updated_at: null } };
+    }
+    const row = { order_num: orderNum, service_date: date, prepared, updated_by: actor, updated_label: label, updated_at: atIso };
+    this.prepStates.set(key, row);
+    this.prepHistory.push({ order_num: orderNum, service_date: date, prepared, actor, label, at: atIso });
+    return { changed: true, row: { ...row } };
+  }
+  async listPrepHistory(num, { date, sinceIso, limit }) {
+    return this.prepHistory.filter((r) => r.order_num === num && (date === null || r.service_date === date) && r.at >= sinceIso).sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, limit);
+  }
+  async prunePrep(historyBeforeIso, stateBeforeIso) {
+    this.prepHistory = this.prepHistory.filter((r) => r.at >= historyBeforeIso);
+    for (const [k, r] of this.prepStates) if (r.updated_at < stateBeforeIso) this.prepStates.delete(k);
   }
   async listDivisionContacts() { return [...this.divisionContacts.values()].sort((a, b) => (a.division < b.division ? -1 : 1)); }
   async upsertDivisionContact(row) { this.divisionContacts.set(row.division, { ...row, updated_at: new Date().toISOString() }); }
