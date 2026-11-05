@@ -17,6 +17,7 @@ import "../widgets/announcement_banner.dart";
 import "../widgets/bilingual.dart";
 import "../widgets/receipt_sheet.dart";
 import "../api/session.dart";
+import "../widgets/order_change.dart";
 import "ticket_sheet.dart";
 
 class CalendarScreen extends ConsumerWidget {
@@ -218,7 +219,7 @@ class _OrderCard extends StatelessWidget {
       child: InkWell(
         key: Key("card-${order.soNum}"),
         borderRadius: BorderRadius.circular(12),
-        onTap: () => showTicketSheet(context, order.soNum),
+        onTap: () => showTicketSheet(context, order.soNum, order: order),
         child: IntrinsicHeight(
         child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -233,6 +234,7 @@ class _OrderCard extends StatelessWidget {
                   Row(
                     children: <Widget>[
                       Expanded(child: Text(order.soNum, style: const TextStyle(fontWeight: FontWeight.w700))),
+                      OrderChangedBadge(orderNum: order.soNum),
                       InkWell(
                         key: Key("report-${order.soNum}"),
                         onTap: () => showAdjustmentSheet(context, order),

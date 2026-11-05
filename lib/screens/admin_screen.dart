@@ -12,6 +12,7 @@ import "../state/providers.dart";
 import "../theme.dart";
 import "../widgets/announcement_banner.dart";
 import "../widgets/bilingual.dart";
+import "../widgets/order_change.dart";
 import "ticket_sheet.dart";
 
 /// /admin — SuperUser only. The credentials are checked by the SERVER; the
@@ -281,11 +282,14 @@ class _AdminBody extends ConsumerWidget {
                 key: Key("admin-order-${o.soNum}"),
                 margin: const EdgeInsets.only(top: 8),
                 child: ListTile(
-                  title: Text(o.soNum, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  title: Row(children: <Widget>[
+                    Flexible(child: Text(o.soNum, style: const TextStyle(fontWeight: FontWeight.w700))),
+                    OrderChangedBadge(orderNum: o.soNum),
+                  ]),
                   subtitle: Text([o.customer, o.serviceType, o.carrierName].where((e) => (e ?? "").isNotEmpty).join(" · ")),
                   trailing: Text(OrderWindows.parseDate(o.date) == null ? "" : fmt.format(OrderWindows.parseDate(o.date)!),
                       style: const TextStyle(fontSize: 12, color: kPurple)),
-                  onTap: () => showTicketSheet(context, o.soNum),
+                  onTap: () => showTicketSheet(context, o.soNum, order: o),
                 ),
               ),
           ],

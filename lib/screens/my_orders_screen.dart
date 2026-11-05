@@ -6,6 +6,7 @@ import "../i18n/i18n.dart";
 import "../logic/order_windows.dart";
 import "../state/providers.dart";
 import "../widgets/contact_links.dart";
+import "../widgets/order_change.dart";
 import "ticket_sheet.dart";
 
 /// "Mes commandes" — upcoming only, 1 or 2 weeks.
@@ -58,8 +59,11 @@ class MyOrdersScreen extends ConsumerWidget {
                     return ListTile(
                       tileColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0x14000000))),
-                      title: Text(o.soNum, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      onTap: () => showTicketSheet(context, o.soNum),
+                      title: Row(children: <Widget>[
+                        Flexible(child: Text(o.soNum, style: const TextStyle(fontWeight: FontWeight.w700))),
+                        OrderChangedBadge(orderNum: o.soNum),
+                      ]),
+                      onTap: () => showTicketSheet(context, o.soNum, order: o),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
