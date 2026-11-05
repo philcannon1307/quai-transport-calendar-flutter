@@ -20,6 +20,10 @@ const KNOWN_FIELDS = new Set([
 ]);
 const CUSTOM_FIELD = /^(item|custom):[^\u0000-\u001f]{1,70}$/;
 const MAX_CHANGES = 40;
+const MAX_LINES = 50;
+const MAX_ITEM = 70;
+const MAX_LINE_NOTE = 200;
+const QTY = /^\d{1,6}$/;
 const MAX_VALUE = 500;
 const DEDUPE_WINDOW_MS = 10 * 60_000;
 
@@ -66,8 +70,51 @@ export function serverOld(row, field) {
   return clean(asText(row[col]), MAX_VALUE);
 }
 
-/** Body (+ the order's delivery_history row) -> { changes: [{field, old, new}], reason }. Throws HttpError(4xx). */
+/** Quantity text/number -> non-negative integer string, or null when it is not one. */
+function qtyOf(v) {
+  if (typeof v === "number") return Number.isInteger(v) && v >= 0 && v <= 999999 ? String(v) : null;
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return QTY.test(t) ? String(Number(t)) : null;
+}
+
+/** Line-by-line mode: body.lines = [{ item, before, after, note }] (before blank/absent = 0 = added line). */
+function validateLines(body) {
+  if (!Array.isArray(body.lines)) throw new HttpError(400, "lines_invalid");
+  if (body.lines.length > MAX_LINES) throw new HttpError(422, "too_many_changes");
+  const seen = new Set();
+  const changes = [];
+  for (const l of body.lines) {
+    if (!l || typeof l !== "object" || typeof l.item !== "string") throw new HttpError(400, "line_invalid");
+    const item = clean(l.item, 200);
+    if (!item || item.length > MAX_ITEM) throw new HttpError(422, "item_invalid");
+    const key = norm(item);
+    if (seen.has(key)) throw new HttpError(422, "duplicate_field");
+    seen.add(key);
+    const blank = l.before == null || (typeof l.before === "string" && l.before.trim() === "");
+    const before = blank ? "0" : qtyOf(l.before);
+    const after = qtyOf(l.after);
+    if (before === null || after === null) throw new HttpError(422, "quantity_invalid");
+    if (l.note != null && typeof l.note !== "string") throw new HttpError(400, "line_invalid");
+    if (before === after) continue; // not a change
+    changes.push({ field: "item:" + item, old: before, new: after, note: clean(l.note, MAX_LINE_NOTE) });
+  }
+  return changes;
+}
+
+/**
+ * Body (+ the order's delivery_history row) -> { changes: [{field, old, new, note?}], reason }. Throws HttpError(4xx).
+ * Current format: { lines: [{item, before, after, note}], reason } (a line = one "item:NAME" row; a note-only change is one "note" row).
+ * Legacy format { changes: [{field, old, new}] } is still accepted.
+ */
 export function validateChange(body, row = null) {
+  if (body && typeof body === "object" && body.lines !== undefined) {
+    const changes = validateLines(body);
+    const reason = clean(body.reason, MAX_VALUE);
+    if (changes.length === 0 && !reason) throw new HttpError(422, "no_changes");
+    if (changes.length === 0) changes.push({ field: "note", old: "", new: reason, note: "" });
+    return { changes, reason };
+  }
   if (!body || typeof body !== "object" || !Array.isArray(body.changes)) throw new HttpError(400, "changes_required");
   if (body.changes.length > MAX_CHANGES) throw new HttpError(422, "too_many_changes");
   const seen = new Set();
@@ -157,7 +204,7 @@ export function resolveRecipients({ kind, shippingLocation, receivingLocation, c
 }
 
 export function requestHash(num, who, changes, reason) {
-  return createHash("sha256").update(JSON.stringify([num, who, changes.map((c) => [c.field, c.old, c.new]), reason])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([num, who, changes.map((c) => [c.field, c.old, c.new, c.note ?? ""]), reason])).digest("hex");
 }
 
 /** Everything recipients depend on comes from our own delivery_history row; an unknown order yields empty values. */
@@ -225,7 +272,7 @@ export function createOrderChanges({ store, settings, sendEmail, now = Date.now,
     const rec = await store.recordOrderChange(changes.map((ch) => ({
       id: randomUUID(), change_id: changeId, order_num: num, order_kind: kind, field: ch.field, old_value: ch.old, new_value: ch.new,
       reason, changed_by: s.carrier, request_hash: hash,
-      context: { carrierName: c.carrierName, shippingLocation: c.shippingLocation, receivingLocation: c.receivingLocation, customer: c.customer },
+      context: { carrierName: c.carrierName, shippingLocation: c.shippingLocation, receivingLocation: c.receivingLocation, customer: c.customer, ...(ch.note ? { lineNote: ch.note } : {}) },
       notified_recipients: notified, email_status: "pending",
     })), { orderNum: num, hash, sinceIso: new Date(now() - DEDUPE_WINDOW_MS).toISOString() });
     if (rec.duplicate) {
@@ -256,7 +303,7 @@ export function createOrderChanges({ store, settings, sendEmail, now = Date.now,
     const byId = new Map();
     for (const r of rows) {
       const g = byId.get(r.change_id) ?? { changeId: r.change_id, changedBy: r.changed_by, changedAt: r.changed_at, reason: r.reason, emailStatus: r.email_status, fields: [] };
-      g.fields.push({ field: r.field, old: r.old_value, new: r.new_value });
+      g.fields.push({ field: r.field, old: r.old_value, new: r.new_value, ...(r.context?.lineNote ? { note: r.context.lineNote } : {}) });
       byId.set(r.change_id, g);
     }
     return { orderNum: num, changed: byId.size > 0, changes: [...byId.values()] };

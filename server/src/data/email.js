@@ -75,24 +75,48 @@ const fieldLabel = (f) => {
   const m = /^(item|custom):(.*)$/.exec(f);
   return m ? (m[1] === "item" ? "Article / Item : " : "") + m[2] : f;
 };
+const ITEM_FIELD = /^item:(.*)$/;
+/** Quantity change in words: before 0 = added, after 0 = removed, else quantity changed. */
+export function lineAction(before, after) {
+  const b = Number(before), a = Number(after);
+  if (Number.isFinite(b) && Number.isFinite(a)) {
+    if (b === 0 && a > 0) return "Ajouté / Added";
+    if (a === 0 && b > 0) return "Retiré / Removed";
+  }
+  return "Quantité modifiée / Quantity changed";
+}
 function orderChangeEmail(d, unsubUrl) {
-  const rows = Array.isArray(d.changes) ? d.changes : [];
+  const all = Array.isArray(d.changes) ? d.changes : [];
+  const lines = all.filter((r) => ITEM_FIELD.test(r.field));
+  const noteRows = all.filter((r) => r.field === "note");
+  const rows = all.filter((r) => !ITEM_FIELD.test(r.field) && r.field !== "note"); // legacy field-based entries
+  const generalNote = d.reason || noteRows.map((r) => r.new).join(" ");
+  const td = "padding:8px 10px;border-bottom:1px solid #e5e7eb;font-size:14px;vertical-align:top";
+  const th = "padding:8px 10px;border-bottom:2px solid #0f172a;font-size:12px;text-align:left;text-transform:uppercase;color:#475569";
+  const table = lines.length
+    ? `<table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:12px 0"><thead><tr><th style="${th}">Article / Item</th><th style="${th}">Avant → Après / Before → After</th><th style="${th}">Note</th></tr></thead><tbody>${lines.map((r) => {
+      const name = ITEM_FIELD.exec(r.field)[1];
+      return `<tr><td style="${td}"><strong>${esc(name)}</strong><br><span style="font-size:12px;color:#475569">${esc(lineAction(r.old, r.new))}</span></td><td style="${td};white-space:nowrap">${esc(r.old || "0")} → <strong>${esc(r.new || "0")}</strong></td><td style="${td}">${esc(r.note || "")}</td></tr>`;
+    }).join("")}</tbody></table>`
+    : "";
   const test = d.testMode
     ? `<div style="${STYLE.item};background:#fef9c3"><p style="${STYLE.row}"><strong>TEST</strong> — destinataires prévus / intended recipients : ${esc((d.intended || []).map((r) => r.email + " (" + (r.roles || []).join("/") + ")").join(", ") || "—")}</p></div>`
     : "";
   const html = shell("Commande modifiée / Order changed", `<h1 style="${STYLE.h1}">Commande modifiée — ${esc(d.orderNum)}</h1>
     ${test}<p style="${STYLE.p}">La commande a été modifiée par <strong>${esc(d.changedBy)}</strong> le ${esc(d.changedAt)}.<br>Order <strong>${esc(d.orderNum)}</strong> was changed by <strong>${esc(d.changedBy)}</strong> on ${esc(d.changedAt)}.</p>
     <div style="${STYLE.meta}">${metaRow("Commande / Order", d.orderNum + " (" + d.orderKind + ")")}${metaRow("Client / Customer", d.customer)}${metaRow("Transporteur / Carrier", d.carrierName)}</div>
+    ${table}
     ${rows.map((r) => `<div style="${STYLE.item}"><p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 4px">${esc(fieldLabel(r.field))}</p><p style="${STYLE.row}">Avant / Before : <strong>${esc(r.old || "—")}</strong> → Après / After : <strong>${esc(r.new || "—")}</strong></p></div>`).join("")}
-    ${d.reason ? `<p style="${STYLE.p}"><strong>Raison / Reason :</strong> ${esc(d.reason)}</p>` : ""}
+    ${generalNote ? `<p style="${STYLE.p}"><strong>Mémo / Note :</strong> ${esc(generalNote)}</p>` : ""}
     ${d.ticketUrl ? `<p style="text-align:center;margin:24px 0"><a href="${esc(d.ticketUrl)}" style="${STYLE.btn}">Voir le bon de commande / View picking ticket</a></p>` : ""}
     <p style="${STYLE.footer}">Sent automatically by ${SITE}. Unsubscribe link below.</p>`, unsubUrl);
   const text = [
     (d.testMode ? "[TEST] " : "") + "Commande modifiée / Order changed — " + d.orderNum,
     "Modifiée par / Changed by : " + d.changedBy + " (" + d.changedAt + ")",
     "Transporteur / Carrier : " + (d.carrierName || "—"),
+    ...lines.map((r) => "- " + ITEM_FIELD.exec(r.field)[1] + " : " + (r.old || "0") + " → " + (r.new || "0") + " (" + lineAction(r.old, r.new) + ")" + (r.note ? " — " + r.note : "")),
     ...rows.map((r) => "- " + fieldLabel(r.field) + " : " + (r.old || "—") + " → " + (r.new || "—")),
-    d.reason ? "Raison / Reason : " + d.reason : "", d.ticketUrl ? "Bon de commande / Picking ticket : " + d.ticketUrl : "",
+    generalNote ? "Mémo / Note : " + generalNote : "", d.ticketUrl ? "Bon de commande / Picking ticket : " + d.ticketUrl : "",
     d.testMode ? "TEST — destinataires prévus / intended: " + (d.intended || []).map((r) => r.email).join(", ") : "",
   ].filter(Boolean).join("\n");
   return { html, text };
@@ -157,7 +181,7 @@ async function buildJob(template, input, session, store, baseUrl, publicSiteUrl 
       recipients: Array.isArray(n.delivered) ? n.delivered : [],
       data: {
         orderNum: first.order_num, orderKind: first.order_kind, changedBy: first.changed_by, changedAt: when(first.changed_at), reason: first.reason,
-        changes: rows.map((r) => ({ field: r.field, old: r.old_value, new: r.new_value })), carrierName: ctx.carrierName, customer: ctx.customer,
+        changes: rows.map((r) => ({ field: r.field, old: r.old_value, new: r.new_value, note: r.context?.lineNote || "" })), carrierName: ctx.carrierName, customer: ctx.customer,
         testMode: Boolean(n.override), intended: n.intended ?? [], ticketUrl: publicSiteUrl ? publicSiteUrl.replace(/\/+$/, "") : "",
       },
       markTable: undefined, markId: undefined, meta: { changeId: first.change_id },

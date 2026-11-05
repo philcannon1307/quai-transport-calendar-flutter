@@ -5,6 +5,7 @@ import "package:flutter_riverpod/flutter_riverpod.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:quai_calendar/api/backend_gateway.dart";
 import "package:quai_calendar/api/order_change_service.dart";
+import "package:quai_calendar/api/sales_order_service.dart";
 import "package:quai_calendar/api/ticket_service.dart";
 import "package:quai_calendar/i18n/i18n.dart";
 import "package:quai_calendar/l10n/key_map.dart";
@@ -13,6 +14,7 @@ import "package:quai_calendar/models/order.dart";
 import "package:quai_calendar/pdf/pdf_ports.dart";
 import "package:quai_calendar/screens/ticket_sheet.dart";
 import "package:quai_calendar/state/order_change_providers.dart";
+import "package:quai_calendar/state/prep_providers.dart";
 import "package:quai_calendar/state/providers.dart";
 import "package:quai_calendar/widgets/order_change.dart";
 
@@ -78,6 +80,38 @@ const Order _so = Order(
   shippingLocationName: "Ste-Agathe", carrierName: "SADM - Jayson", city: "Saint-Donat",
 );
 
+final Order _soId = Order(
+  kind: OrderKind.order, soNum: "SO20448", soId: 77, date: "2026-11-04", shipDate: "2026-11-04", customer: "Deroy", serviceType: "INSTALLATION",
+  shippingLocationName: "Ste-Agathe", carrierName: "SADM - Jayson", city: "Saint-Donat",
+);
+
+final Override _itemsOverride = salesOrderDetailsProvider.overrideWith((ref, id) async => const SalesOrderDetails(
+      salesOrderId: "77",
+      soNum: "SO20448",
+      items: <SalesOrderItem>[
+        SalesOrderItem(name: "2x4x8 SPF", sku: "SPF-248", quantity: 10, unit: "pc"),
+        SalesOrderItem(name: "Vis 3po", sku: "VIS3", quantity: 200),
+      ],
+    ));
+
+/// Adds a typed line (no order lines available) and fills it.
+Future<void> _addLine(WidgetTester tester, int i, {required String item, String before = "", required String after, String note = ""}) async {
+  await tester.ensureVisible(find.byKey(const Key("chg-add-line")));
+  await tester.tap(find.byKey(const Key("chg-add-line")));
+  await tester.pump();
+  await tester.enterText(find.byKey(Key("chg-line-$i-item")), item);
+  if (before.isNotEmpty) await tester.enterText(find.byKey(Key("chg-line-$i-before")), before);
+  await tester.enterText(find.byKey(Key("chg-line-$i-after")), after);
+  if (note.isNotEmpty) await tester.enterText(find.byKey(Key("chg-line-$i-note")), note);
+  await tester.pump();
+}
+
+Future<void> _continue(WidgetTester tester) async {
+  await tester.ensureVisible(find.byKey(const Key("chg-continue")));
+  await tester.tap(find.byKey(const Key("chg-continue")));
+  await _settle(tester);
+}
+
 Widget _host(FakeTransport t, Widget home, {List<Override> extra = const <Override>[]}) => ProviderScope(
       overrides: <Override>[orderChangeTransportProvider.overrideWithValue(t), ...extra],
       child: StringsScope(strings: _strings(), child: MaterialApp(home: home)),
@@ -125,6 +159,37 @@ void main() {
       expect(d[1].newValue, "call before");
       expect(d[0].oldValue, "2026-11-04");
       expect(d.last.toJson(), <String, String>{"field": "item:2x4 SPF", "old": "10", "new": "12"});
+    });
+
+    test("line actions derive from before/after; issues are caught early", () {
+      expect(lineActionOf("", "3"), "added");
+      expect(lineActionOf("0", "3"), "added");
+      expect(lineActionOf("5", "0"), "removed");
+      expect(lineActionOf("10", "8"), "changed");
+      expect(lineActionLabel("removed", french: true), "Retiré");
+      expect(lineActionLabel("added", french: false), "Added");
+      expect(lineIssue(const ChangeLine(item: "2x4", before: "10", after: "8")), isNull);
+      expect(lineIssue(const ChangeLine(item: "2x4", after: "8")), isNull, reason: "blank before = 0 = added");
+      expect(lineIssue(const ChangeLine(item: "", after: "8")), "item");
+      expect(lineIssue(ChangeLine(item: "x" * 71, after: "8")), "item");
+      expect(lineIssue(const ChangeLine(item: "a", before: "1.5", after: "8")), "before");
+      expect(lineIssue(const ChangeLine(item: "a", before: "1", after: "")), "after");
+      expect(lineIssue(const ChangeLine(item: "a", before: "1", after: "-2")), "after");
+      expect(lineIssue(const ChangeLine(item: "a", before: "4", after: "4")), "same");
+      expect(firstLineIssue(const <ChangeLine>[ChangeLine(item: "a", after: "1"), ChangeLine(item: " A ", after: "2")]), (index: 1, key: "duplicate"));
+      expect(firstLineIssue(const <ChangeLine>[ChangeLine(item: "a", after: "1")]), isNull);
+      expect(const ChangeLine(item: " 2x4 ", before: " 10", after: "8 ", note: " cassé ").toJson(), <String, String>{"item": "2x4", "before": "10", "after": "8", "note": "cassé"});
+    });
+
+    test("history entries: line changes read as Article : avant → après (action) — note; legacy field entries and notes still render", () {
+      final line = FieldChange.fromJson(<String, dynamic>{"field": "item:2x4", "old": "10", "new": "8", "note": "cassé"});
+      expect(line.isItem, isTrue);
+      expect(line.summary(french: true), "2x4 : 10 → 8 (Quantité modifiée) — cassé");
+      expect(const FieldChange(field: "item:Vis", oldValue: "0", newValue: "20").summary(french: false), "Vis : 0 → 20 (Added)");
+      expect(const FieldChange(field: "item:Clous", oldValue: "4", newValue: "0").summary(french: true), "Clous : 4 → 0 (Retiré)");
+      expect(const FieldChange(field: "memo", oldValue: "a", newValue: "b").summary(french: false), "Memo : a → b");
+      expect(const FieldChange(field: "ship_date", oldValue: "2026-11-04", newValue: "2026-11-06").summary(french: true), "Date d'expédition : 2026-11-04 → 2026-11-06");
+      expect(const FieldChange(field: "note", oldValue: "", newValue: "Livrer après 14h").summary(french: true), "Livrer après 14h");
     });
 
     test("fields depend on the order kind", () {
@@ -183,6 +248,15 @@ void main() {
       expect(r.changeId, "c1");
       expect(r.emailFailed, isFalse);
 
+      await s.submitLines(_to, const <ChangeLine>[ChangeLine(item: " 2x4 ", before: "10", after: "8", note: "cassé"), ChangeLine(item: "Vis", after: "3")], note: " mémo ");
+      expect(t.calls.last.path, "/orders/TO555/changes");
+      final lb = t.calls.last.body as Map;
+      expect(lb["reason"], "mémo");
+      expect(lb.containsKey("changes"), isFalse);
+      expect((lb["lines"] as List).first, <String, String>{"item": "2x4", "before": "10", "after": "8", "note": "cassé"});
+      expect((lb["lines"] as List).last, <String, String>{"item": "Vis", "before": "", "after": "3"});
+      expect(lb["context"], containsPair("saleLocationName", "Gatineau"));
+
       final h = await s.history("to555");
       expect(t.calls.last.method, "GET");
       expect(t.calls.last.path, "/orders/TO555/changes");
@@ -212,33 +286,39 @@ void main() {
   });
 
   group("widgets", () {
-    testWidgets("edit -> confirmation lists who is notified (TEST banner) -> save sends the diff", (tester) async {
+    testWidgets("form: identity read-only, no header fields; typed lines -> confirmation lists who is notified (TEST banner) -> save sends the lines", (tester) async {
       final t = FakeTransport();
       await tester.pumpWidget(_host(t, _launcher(_to)));
       await tester.tap(find.byKey(const Key("open")));
       await _settle(tester);
 
-      // nothing changed yet
-      await tester.ensureVisible(find.byKey(const Key("chg-continue")));
-      await tester.tap(find.byKey(const Key("chg-continue")));
-      await _settle(tester);
+      expect(find.byKey(const Key("chg-identity")), findsOneWidget);
+      expect(find.text("TO555"), findsWidgets);
+      expect(find.textContaining("OPEN GOOSENECK"), findsOneWidget);
+      expect(find.textContaining("InterQL"), findsOneWidget);
+      for (final k in <String>["memo", "ship_date", "truck", "carrier", "customer", "address", "phone", "city", "service_type", "status_note"]) {
+        expect(find.byKey(Key("chg-field-$k")), findsNothing, reason: "header field $k is no longer editable");
+      }
+      expect(find.byKey(const Key("chg-no-items-hint")), findsOneWidget, reason: "no order lines: manual entry + a hint");
+      expect(find.byKey(const Key("chg-pick-line")), findsNothing);
+
+      // nothing entered yet
+      await _continue(tester);
       expect(find.byKey(const Key("chg-error")), findsOneWidget);
-      // opening the form reads the saved history (GET) to prefill; nothing may be previewed or saved
       expect(t.calls.where((c) => c.method != "GET"), isEmpty);
 
-      await tester.enterText(find.byKey(const Key("chg-field-memo")), "new memo");
-      await tester.enterText(find.byKey(const Key("chg-reason")), "client asked");
-      await tester.ensureVisible(find.byKey(const Key("chg-add-item")));
-      await tester.tap(find.byKey(const Key("chg-add-item")));
-      await tester.pump();
-      await tester.enterText(find.byKey(const Key("chg-item-0")), "2x4");
-      await tester.enterText(find.byKey(const Key("chg-from-0")), "10");
-      await tester.enterText(find.byKey(const Key("chg-to-0")), "12");
-      await tester.ensureVisible(find.byKey(const Key("chg-continue")));
-      await tester.tap(find.byKey(const Key("chg-continue")));
-      await _settle(tester);
+      await _addLine(tester, 0, item: "2x4", before: "10", after: "12", note: "client");
+      expect(find.byKey(const Key("chg-line-0-action")), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const Key("chg-line-0-action"))).data, "Quantité modifiée");
+      await _addLine(tester, 1, item: "Vis", after: "20");
+      expect(tester.widget<Text>(find.byKey(const Key("chg-line-1-action"))).data, "Ajouté");
+      await tester.enterText(find.byKey(const Key("chg-note")), "client asked");
+      await _continue(tester);
 
       expect(find.byKey(const Key("chg-confirm-dialog")), findsOneWidget);
+      expect(find.textContaining("2x4 : 10 → 12 (Quantité modifiée) — client"), findsOneWidget);
+      expect(find.textContaining("Vis : 0 → 20 (Ajouté)"), findsOneWidget);
+      expect(find.byKey(const Key("chg-confirm-note")), findsOneWidget);
       expect(find.byKey(const Key("chg-recipient-lindsay@groupeql.com")), findsOneWidget);
       expect(find.byKey(const Key("chg-recipient-sadm@groupeql.com")), findsOneWidget);
       expect(find.byKey(const Key("chg-test-banner")), findsOneWidget);
@@ -249,11 +329,88 @@ void main() {
       await _settle(tester);
       expect(t.calls.last.path, "/orders/TO555/changes");
       final body = t.calls.last.body as Map;
-      final fields = (body["changes"] as List).cast<Map>().map((m) => m["field"]).toList();
-      expect(fields, <String>["memo", "item:2x4"]);
+      expect((body["lines"] as List).cast<Map>().map((m) => m["item"]).toList(), <String>["2x4", "Vis"]);
+      expect((body["lines"] as List).first, <String, String>{"item": "2x4", "before": "10", "after": "12", "note": "client"});
       expect(body["reason"], "client asked");
+      expect(body.containsKey("changes"), isFalse);
       expect(find.byKey(const Key("chg-title")), findsNothing, reason: "screen closes after saving");
       expect(find.byType(SnackBar), findsOneWidget);
+    });
+
+    testWidgets("a note alone is enough; line problems are explained before anything is sent", (tester) async {
+      final t = FakeTransport();
+      await tester.pumpWidget(_host(t, _launcher(_so)));
+      await tester.tap(find.byKey(const Key("open")));
+      await _settle(tester);
+
+      await _addLine(tester, 0, item: "2x4", before: "5", after: "5");
+      await _continue(tester);
+      expect(find.textContaining("n'a pas changé"), findsOneWidget);
+      await tester.enterText(find.byKey(const Key("chg-line-0-after")), "");
+      await _continue(tester);
+      expect(find.textContaining("nouvelle quantité"), findsOneWidget);
+      await _addLine(tester, 1, item: " 2X4 ", after: "2");
+      await tester.enterText(find.byKey(const Key("chg-line-0-after")), "7");
+      await _continue(tester);
+      expect(find.textContaining("déjà dans la liste"), findsOneWidget);
+      expect(t.calls.where((c) => c.method != "GET"), isEmpty, reason: "invalid lines never reach the server");
+
+      // remove both lines, note only
+      await tester.ensureVisible(find.byKey(const Key("chg-line-1-remove")));
+      await tester.tap(find.byKey(const Key("chg-line-1-remove")));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key("chg-line-0-remove")));
+      await tester.pump();
+      expect(find.byKey(const Key("chg-line-0")), findsNothing);
+      await _continue(tester);
+      expect(find.byKey(const Key("chg-error")), findsOneWidget, reason: "no lines and no note");
+      await tester.enterText(find.byKey(const Key("chg-note")), "Livrer après 14h");
+      await _continue(tester);
+      expect(find.byKey(const Key("chg-confirm-dialog")), findsOneWidget);
+      await tester.tap(find.byKey(const Key("chg-confirm")));
+      await _settle(tester);
+      final body = t.calls.last.body as Map;
+      expect(body["lines"], isEmpty);
+      expect(body["reason"], "Livrer après 14h");
+    });
+
+    testWidgets("with the order's lines available: pick a line, only the new quantity is typed; Après 0 = removed; used lines are disabled", (tester) async {
+      final t = FakeTransport();
+      await tester.pumpWidget(_host(t, _launcher(_soId), extra: <Override>[_itemsOverride]));
+      await tester.tap(find.byKey(const Key("open")));
+      await _settle(tester);
+
+      expect(find.byKey(const Key("chg-no-items-hint")), findsNothing);
+      await tester.ensureVisible(find.byKey(const Key("chg-pick-line")));
+      await tester.tap(find.byKey(const Key("chg-pick-line")));
+      await _settle(tester);
+      expect(find.text("2x4x8 SPF"), findsOneWidget);
+      expect(find.text("SPF-248"), findsOneWidget);
+      expect(find.text("10 pc"), findsOneWidget);
+      await tester.tap(find.byKey(const Key("chg-pick-0")));
+      await _settle(tester);
+
+      // the article and "before" come from the order and are not editable
+      expect(find.byKey(const Key("chg-line-0-item")), findsOneWidget);
+      expect(find.byType(TextField).evaluate().where((e) => (e.widget as TextField).key == const Key("chg-line-0-item")), isEmpty);
+      expect(find.textContaining("Avant : 10"), findsOneWidget);
+      await tester.enterText(find.byKey(const Key("chg-line-0-after")), "0");
+      await tester.pump();
+      expect(tester.widget<Text>(find.byKey(const Key("chg-line-0-action"))).data, "Retiré");
+
+      await tester.ensureVisible(find.byKey(const Key("chg-pick-line")));
+      await tester.tap(find.byKey(const Key("chg-pick-line")));
+      await _settle(tester);
+      expect(tester.widget<ListTile>(find.byKey(const Key("chg-pick-0"))).enabled, isFalse, reason: "already in the list");
+      await tester.tap(find.byKey(const Key("chg-pick-1")));
+      await _settle(tester);
+      await tester.enterText(find.byKey(const Key("chg-line-1-after")), "150");
+      await _continue(tester);
+      await tester.tap(find.byKey(const Key("chg-confirm")));
+      await _settle(tester);
+      final lines = ((t.calls.last.body as Map)["lines"] as List).cast<Map>();
+      expect(lines[0], <String, String>{"item": "2x4x8 SPF", "before": "10", "after": "0"});
+      expect(lines[1], <String, String>{"item": "Vis 3po", "before": "200", "after": "150"});
     });
 
     testWidgets("a carrier's confirmation lists roles and divisions only (the server hides mailboxes)", (tester) async {
@@ -262,7 +419,7 @@ void main() {
       await tester.pumpWidget(_host(t, _launcher(_so)));
       await tester.tap(find.byKey(const Key("open")));
       await _settle(tester);
-      await tester.enterText(find.byKey(const Key("chg-field-memo")), "x");
+      await _addLine(tester, 0, item: "2x4", before: "1", after: "2");
       await tester.ensureVisible(find.byKey(const Key("chg-continue")));
       await tester.tap(find.byKey(const Key("chg-continue")));
       await _settle(tester);
@@ -276,7 +433,7 @@ void main() {
       await tester.pumpWidget(_host(t, _launcher(_so)));
       await tester.tap(find.byKey(const Key("open")));
       await _settle(tester);
-      await tester.enterText(find.byKey(const Key("chg-field-ship_date")), "2026-11-09");
+      await _addLine(tester, 0, item: "2x4", before: "1", after: "2");
       await tester.ensureVisible(find.byKey(const Key("chg-continue")));
       await tester.tap(find.byKey(const Key("chg-continue")));
       await _settle(tester);
@@ -291,7 +448,7 @@ void main() {
       await tester.pumpWidget(_host(t, _launcher(_so)));
       await tester.tap(find.byKey(const Key("open")));
       await _settle(tester);
-      await tester.enterText(find.byKey(const Key("chg-field-memo")), "x");
+      await _addLine(tester, 0, item: "2x4", before: "1", after: "2");
       await tester.ensureVisible(find.byKey(const Key("chg-continue")));
       await tester.tap(find.byKey(const Key("chg-continue")));
       await _settle(tester);
@@ -309,7 +466,7 @@ void main() {
       await tester.pumpWidget(_host(t, _launcher(_so)));
       await tester.tap(find.byKey(const Key("open")));
       await _settle(tester);
-      await tester.enterText(find.byKey(const Key("chg-field-memo")), "x");
+      await _addLine(tester, 0, item: "2x4", before: "1", after: "2");
       await tester.ensureVisible(find.byKey(const Key("chg-continue")));
       await tester.tap(find.byKey(const Key("chg-continue")));
       await _settle(tester);
@@ -321,7 +478,7 @@ void main() {
       final t = FakeTransport();
       t.historyJson = <String, dynamic>{
         "changes": <Map<String, dynamic>>[
-          <String, dynamic>{"changeId": "c9", "changedBy": "Gat - Sam", "changedAt": "2026-11-05T10:00:00Z", "reason": "client asked", "fields": <Map<String, dynamic>>[<String, dynamic>{"field": "ship_date", "old": "2026-11-04", "new": "2026-11-06"}]},
+          <String, dynamic>{"changeId": "c9", "changedBy": "Gat - Sam", "changedAt": "2026-11-05T10:00:00Z", "reason": "client asked", "fields": <Map<String, dynamic>>[<String, dynamic>{"field": "ship_date", "old": "2026-11-04", "new": "2026-11-06"}, <String, dynamic>{"field": "item:2x4", "old": "10", "new": "8", "note": "cassé"}]},
         ],
       };
       await tester.pumpWidget(_host(t, const Scaffold(body: OrderHistorySheet(orderNum: "SO20448"))));
@@ -329,7 +486,8 @@ void main() {
       expect(find.byKey(const Key("history-c9")), findsOneWidget);
       expect(find.textContaining("Gat - Sam"), findsOneWidget);
       expect(find.textContaining("2026-11-05 10:00"), findsOneWidget);
-      expect(find.textContaining("2026-11-04 → 2026-11-06"), findsOneWidget);
+      expect(find.textContaining("2026-11-04 → 2026-11-06"), findsOneWidget, reason: "legacy field entries still render");
+      expect(find.textContaining("2x4 : 10 → 8 (Quantité modifiée) — cassé"), findsOneWidget);
 
       final empty = FakeTransport();
       await tester.pumpWidget(_host(empty, const Scaffold(body: OrderHistorySheet(orderNum: "SO1"))));
