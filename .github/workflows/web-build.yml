@@ -42,7 +42,7 @@ jobs:
       - name: Build web
         env:
           # Optional repo secret (Maps Embed API key, referrer-restricted). Empty = keyless fallback map.
-          MAPS_EMBED_KEY: ${{ secrets.MAPS_EMBED_KEY }}
+          MAPS_EMBED_KEY: ${{ secrets.MAPS_EMBED_KEY || secrets.MAPSEMBEDKEY }}
         run: set -o pipefail; flutter build web --release --dart-define-from-file=config/public-config.json --dart-define=QUAI_MAPS_EMBED_KEY="$MAPS_EMBED_KEY" 2>&1 | tee logs/build-web.log
 
       - name: Build output sanity
