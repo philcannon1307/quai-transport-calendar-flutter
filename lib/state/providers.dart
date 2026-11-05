@@ -12,6 +12,7 @@ import "../api/auth_service.dart";
 import "../api/backend_gateway.dart";
 import "../api/history_service.dart";
 import "../api/receipts_service.dart";
+import "../api/sales_order_service.dart";
 import "../api/supabase_rest_gateway.dart";
 import "../api/unsubscribe_service.dart";
 import "../logic/announcements.dart";
@@ -184,6 +185,17 @@ final ticketServiceProvider = Provider<TicketService>(
     tokens: SessionTicketTokens(ref.watch(sessionProvider)),
   ),
 );
+
+/// Provisional picking list source (orders with no truck yet). Null for anyone but
+/// SADM - Logistique and SuperUser: carriers never get it (the server refuses them too).
+final salesOrderServiceProvider = Provider<SalesOrderService?>((ref) {
+  final session = ref.watch(sessionProvider);
+  final name = session.name();
+  if (name != kLogistique && name != kSuperUserName) return null;
+  final url = salesOrderUrlFor(ref.watch(middlewareProxyUrlProvider));
+  if (url.isEmpty) return null;
+  return SalesOrderService(url: url, token: session.sessionToken);
+});
 
 /// Reads PDF text. The real engine is injected from main.dart.
 final pdfTextExtractorProvider = Provider<PdfTextExtractor>((ref) => const UnavailablePdfTextExtractor());

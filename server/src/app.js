@@ -3,6 +3,7 @@ import { FailureLimiter, RateLimiter } from "./limiter.js";
 import { createJobService } from "./jobService.js";
 import { createExchange } from "./exchange.js";
 import { createMiddlewareProxy, MIDDLEWARE_PATH } from "./middleware.js";
+import { createSalesOrderProxy, SALES_ORDER_PATH } from "./salesOrder.js";
 import { createDataApi, isDataPath } from "./data/routes.js";
 
 const MAX_BODY = 4096;
@@ -13,7 +14,7 @@ export function clientIp(req, hops) {
   return req.socket.remoteAddress ?? "unknown";
 }
 
-export function createApp(config, { jobs, now = Date.now, log = () => {}, store = null, mailer = null } = {}) {
+export function createApp(config, { jobs, now = Date.now, log = () => {}, store = null, mailer = null, salesOrderRetryMs } = {}) {
   const L = config.limits;
   const limiters = {
     perIp: new RateLimiter({ ...L.perIpRequests, now }),
@@ -27,6 +28,7 @@ export function createApp(config, { jobs, now = Date.now, log = () => {}, store 
   const jobService = jobs ?? createJobService({ baseUrl: config.jobServiceUrl, timeoutMs: config.jobTimeoutMs });
   const exchange = createExchange({ config, jobs: jobService, limiters, log });
   const middleware = createMiddlewareProxy({ config, limiters, log, now });
+  const salesOrder = createSalesOrderProxy({ config, limiters, log, now, retryDelayMs: salesOrderRetryMs });
 
   // Data API (announcements, receipts, change reports, history, email). Active only with a store.
   const dataApi = createDataApi({ config, store, provider: mailer, now, log });
@@ -68,7 +70,8 @@ export function createApp(config, { jobs, now = Date.now, log = () => {}, store 
       const path = (req.url ?? "/").split("?")[0];
       if (req.method === "GET" && path === "/health") return send(res, 200, { status: "ok" });
       if (isDataPath(path)) return dataApi.handle(req, res, clientIp(req, config.trustProxyHops));
-      const isMiddleware = path === MIDDLEWARE_PATH;
+      const isSalesOrder = path === SALES_ORDER_PATH;
+      const isMiddleware = path === MIDDLEWARE_PATH || isSalesOrder;
       if (path !== "/exchange" && path !== "/" && !isMiddleware) return send(res, 404, { error: "not_found" });
 
       // CORS: a browser Origin must be on the allow-list; no Origin = not a browser.
@@ -91,7 +94,7 @@ export function createApp(config, { jobs, now = Date.now, log = () => {}, store 
         const mip = clientIp(req, config.trustProxyHops);
         const mwait = limiters.middlewarePerIp.hit(mip);
         if (mwait > 0) return send(res, 429, { error: "too_many_requests", retryAfter: mwait }, { ...cors, "Retry-After": String(mwait) });
-        const out = await middleware(req, new URL(req.url ?? "/", "http://x"), mip);
+        const out = await (isSalesOrder ? salesOrder : middleware)(req, new URL(req.url ?? "/", "http://x"), mip);
         if (out.raw !== undefined) {
           res.writeHead(out.status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...cors });
           return res.end(out.raw);
