@@ -154,6 +154,11 @@ export function loadConfig(env = process.env) {
     storageAlarmMb: int(env, "STORAGE_ALARM_MB", 2000, 1, 10000000, errors),
   };
   const trustProxyHops = int(env, "TRUST_PROXY_HOPS", 1, 0, 5, errors);
+  const adminAggregate = {
+    enabled: !/^(0|false|off|no)$/i.test(String(env.ADMIN_AGGREGATE_ENABLED ?? "")),
+    intervalSeconds: int(env, "ADMIN_AGGREGATE_REFRESH_SECONDS", 300, 30, 3600, errors),
+    truckTimeoutMs: int(env, "ADMIN_AGGREGATE_TRUCK_TIMEOUT_MS", 40000, 1000, 120000, errors),
+  };
   const port = int(env, "PORT", 3000, 1, 65535, errors);
 
   return {
@@ -161,7 +166,7 @@ export function loadConfig(env = process.env) {
     warnings,
     config: {
       port, credentials, sessionSecret, sessionTtlSeconds, allowedOrigins, jobServiceUrl, jobTimeoutMs,
-      superUser, trustProxyHops,
+      superUser, trustProxyHops, adminAggregate,
       data: {
         store: dataStore, databaseUrl, publicBaseUrl, uploads, emailFrom, publicSiteUrl: env.PUBLIC_SITE_URL ?? "", orderChanges: oc.settings,
         email: { provider: emailProvider, apiKey: env.EMAIL_API_KEY ?? "", replyTo: env.EMAIL_REPLY_TO ?? "" },

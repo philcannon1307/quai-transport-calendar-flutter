@@ -33,6 +33,17 @@ The SADM - Logistique Pick-ups tab reads Ste-Agathe calendar events from the aft
 * **CORS:** same exact-origin list as the login (`ALLOWED_ORIGINS`); preflight allows `GET` with `Authorization`, `X-Quai-Session`, `Cache-Control`.
 * **Logs:** event names only (`middleware_upstream_status`, `middleware_upstream_error` with kind timeout/network). The key is never logged or echoed.
 
+## Admin orders aggregate (`GET /admin/orders-aggregate`)
+
+The job service answers one request at a time (~4.5 s each, a few trucks ~30 s), so the Admin screen cannot load 19 trucks itself. This server does it in the background and keeps the result.
+
+- A refresher walks all trucks **one at a time** (ship-calendar for every truck, transfer-calendar for the two Gooseneck trucks), never overlaps itself, times out each truck request after 40 s, retries a failed truck once, and backs off when several fail in a row. It logs in with the server-held `CARRIER_CREDENTIALS_JSON` logins (accent- and case-insensitive names, like the sign-in) and renews an expired job-service token once.
+- First refresh starts ~3 s after the server is listening (`/health` is already up); expect the first full fill ~2-3 minutes after boot. Then every `ADMIN_AGGREGATE_REFRESH_SECONDS` (default 300). With `DATABASE_URL` set, each completed cycle is also saved in one row (table `admin_aggregate_cache`, created on first use) so a restart starts with the last snapshot instead of empty.
+- `GET /admin/orders-aggregate` (session JWT, role `superuser` or `logistique`; carriers get 403) returns `{generatedAt, oldestRefreshedAt, refreshing, refreshIntervalSeconds, trucks:[{name, displayName, truck, ok, status, lastRefreshedAt, orders:{ship:[...], transfer:[...]}}]}`. `status` is `ok`, `stale` (last refresh failed or older than 3 intervals; the last good orders are kept), `failed` (never loaded) or `pending` (not tried yet). Rows are the job service's own order rows, unchanged (shell transfer rows removed).
+- `POST /admin/orders-aggregate/refresh` starts an immediate full refresh (202), joins the one already running, and is limited to one request per minute (429 + `Retry-After`).
+- Only truck names, order rows and timestamps are returned or logged; never passwords or job-service tokens.
+- Env: `ADMIN_AGGREGATE_REFRESH_SECONDS` (30-3600, default 300), `ADMIN_AGGREGATE_ENABLED` (`false` turns it off; the endpoint then answers 503 and the app falls back to loading truck by truck), `ADMIN_AGGREGATE_TRUCK_TIMEOUT_MS` (default 40000).
+
 ## Security
 
 * Passwords only in environment variables (`CARRIER_CREDENTIALS_JSON`, `SUPERUSER_PASSWORD_HASH`). Nothing in the repo or in the app. Secrets are never logged or returned; failed-login logs hold the carrier name and IP only.

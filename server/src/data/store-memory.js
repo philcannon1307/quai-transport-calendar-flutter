@@ -168,4 +168,7 @@ export class MemoryStore {
     }
     return null;
   }
+  // Admin orders aggregate cache (single JSON document).
+  async getAggregateCache() { return this.aggregateCache ?? null; }
+  async putAggregateCache(text) { this.aggregateCache = text; }
 }
