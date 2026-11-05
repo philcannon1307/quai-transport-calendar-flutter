@@ -223,7 +223,8 @@ void main() {
       await tester.tap(find.byKey(const Key("chg-continue")));
       await _settle(tester);
       expect(find.byKey(const Key("chg-error")), findsOneWidget);
-      expect(t.calls, isEmpty);
+      // opening the form reads the saved history (GET) to prefill; nothing may be previewed or saved
+      expect(t.calls.where((c) => c.method != "GET"), isEmpty);
 
       await tester.enterText(find.byKey(const Key("chg-field-memo")), "new memo");
       await tester.enterText(find.byKey(const Key("chg-reason")), "client asked");
@@ -281,7 +282,7 @@ void main() {
       await _settle(tester);
       await tester.tap(find.byKey(const Key("chg-confirm-back")));
       await _settle(tester);
-      expect(t.calls.where((c) => !c.path.endsWith("/preview")), isEmpty);
+      expect(t.calls.where((c) => c.method != "GET" && !c.path.endsWith("/preview")), isEmpty);
       expect(find.byKey(const Key("chg-title")), findsOneWidget);
     });
 
