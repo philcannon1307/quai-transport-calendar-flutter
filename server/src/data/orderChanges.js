@@ -9,6 +9,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { HttpError } from "./handler.js";
 import { FALLBACK_INBOX, adjustmentInbox, isGroupeQl, isUuid, locationInbox } from "./guard.js";
+import { normName } from "../roster.js";
 
 export const DEFAULT_TEST_RECIPIENT = "communication@groupeql.com";
 export const DEFAULT_DISPATCHER = "sadm@groupeql.com";
@@ -46,8 +47,27 @@ export function validateOrderNum(raw) {
   return n;
 }
 
-/** Body -> { changes: [{field, old, new}], reason, context }. Throws HttpError(4xx). */
-export function validateChange(body) {
+const pad = (n) => String(n).padStart(2, "0");
+const asText = (v) => {
+  if (v == null) return "";
+  if (v instanceof Date) return v.getFullYear() + "-" + pad(v.getMonth() + 1) + "-" + pad(v.getDate()); // pg DATE = local midnight
+  return String(v);
+};
+// Ticket field -> delivery_history column. Only these "old" values can be trusted server-side.
+const OLD_FROM_ROW = {
+  ship_date: "ship_date", event_start_date: "event_start_date", truck: "truck_name", carrier: "carrier_name", customer: "customer",
+  city: "city", shipping_location: "shipping_location_name", receiving_location: "sale_location_name", service_type: "service_type",
+  status_note: "status",
+};
+/** The real value of a field as the server knows it, or undefined when the server has no data for it. */
+export function serverOld(row, field) {
+  const col = OLD_FROM_ROW[field];
+  if (!row || !col || row[col] == null) return undefined;
+  return clean(asText(row[col]), MAX_VALUE);
+}
+
+/** Body (+ the order's delivery_history row) -> { changes: [{field, old, new}], reason }. Throws HttpError(4xx). */
+export function validateChange(body, row = null) {
   if (!body || typeof body !== "object" || !Array.isArray(body.changes)) throw new HttpError(400, "changes_required");
   if (body.changes.length > MAX_CHANGES) throw new HttpError(422, "too_many_changes");
   const seen = new Set();
@@ -59,27 +79,53 @@ export function validateChange(body) {
     if (seen.has(field)) throw new HttpError(422, "duplicate_field");
     seen.add(field);
     for (const k of ["old", "new"]) if (c[k] != null && (typeof c[k] !== "string" && typeof c[k] !== "number")) throw new HttpError(400, "change_invalid");
-    const o = clean(c.old, MAX_VALUE), n = clean(c.new, MAX_VALUE);
+    const known = serverOld(row, field);
+    const o = known !== undefined ? known : clean(c.old, MAX_VALUE), n = clean(c.new, MAX_VALUE);
     if (o === n) continue; // not a change
     changes.push({ field, old: o, new: n });
   }
   if (changes.length === 0) throw new HttpError(422, "no_changes");
-  const ctx = body.context && typeof body.context === "object" ? body.context : {};
-  const context = {};
-  for (const k of ["shippingLocationName", "saleLocationName", "carrierName", "customer"]) if (typeof ctx[k] === "string" && ctx[k].trim()) context[k] = clean(ctx[k], 120);
-  return { changes, reason: clean(body.reason, MAX_VALUE), context };
+  // body.context (locations, carrier) from the client is deliberately ignored: recipients come from server data only.
+  return { changes, reason: clean(body.reason, MAX_VALUE) };
 }
+
+// ---- ownership: who may read / change which order
+const tokensOf = (s) => norm(s).split(/[^a-z0-9]+/).filter(Boolean);
+const BUILT_IN_WORDS = new Set(["sadm", "agathe", "gatineau", "lindsay", "laurier", "quebec", "sherbrooke", "estrie"]);
+const hasSeq = (tokens, key) => {
+  if (key.length === 0) return false;
+  for (let i = 0; i + key.length <= tokens.length; i++) if (key.every((k, j) => tokens[i + j] === k)) return true;
+  return false;
+};
+
+/**
+ * "Own" order = the order's carrier (delivery_history.carrier_name) or truck (truck_name) is one of the names on the
+ * session: the carrier's own login, its backend user and its linked trucks. Logistique (the SADM dispatcher, which
+ * also sees the Gooseneck trucks) and SuperUser act on every order. No history row => nobody can prove ownership,
+ * so a carrier is refused.
+ */
+export function ownsOrder(s, row) {
+  if (s.appRole === "superuser" || s.appRole === "logistique") return true;
+  if (!row) return false;
+  const mine = new Set((Array.isArray(s.names) && s.names.length ? s.names : [s.carrier]).map(normName).filter(Boolean));
+  return [row.carrier_name, row.truck_name].some((n) => n && mine.has(normName(n)));
+}
+const seesInternal = (s) => s.appRole === "superuser" || s.appRole === "logistique";
 
 /** Location name -> { division, emails } using SuperUser-edited contacts first, then the built-in keyword map. */
 export function resolveDivision(location, contacts = []) {
-  const n = norm(location);
-  if (!n) return null;
+  const toks = tokensOf(location);
+  if (toks.length === 0) return null;
+  // whole words only: "Lindsay" matches the keyword "lindsay" but "Gat" or "ay" match nothing
   for (const c of contacts) {
-    const keys = [c.division, ...(Array.isArray(c.location_keywords) ? c.location_keywords : [])].map(norm).filter(Boolean);
-    if (keys.some((k) => n.includes(k))) return { division: c.division, emails: (c.emails ?? []).map((e) => String(e).toLowerCase()).filter(isGroupeQl) };
+    const keys = [c.division, ...(Array.isArray(c.location_keywords) ? c.location_keywords : [])].map(tokensOf).filter((k) => k.join("").length >= 3);
+    if (keys.some((k) => hasSeq(toks, k))) return { division: c.division, emails: (c.emails ?? []).map((e) => String(e).toLowerCase()).filter(isGroupeQl) };
   }
-  const inbox = locationInbox(location);
-  return inbox ? { division: inbox.split("@")[0], emails: [inbox] } : null;
+  for (const t of toks) {
+    const inbox = BUILT_IN_WORDS.has(t) ? locationInbox(t) : null;
+    if (inbox) return { division: inbox.split("@")[0], emails: [inbox] };
+  }
+  return null;
 }
 
 /**
@@ -114,14 +160,20 @@ export function requestHash(num, who, changes, reason) {
   return createHash("sha256").update(JSON.stringify([num, who, changes.map((c) => [c.field, c.old, c.new]), reason])).digest("hex");
 }
 
-async function orderContext(store, num, kind, ctx) {
-  const row = typeof store.getHistoryRow === "function" ? await store.getHistoryRow(num) : null;
+/** Everything recipients depend on comes from our own delivery_history row; an unknown order yields empty values. */
+function orderContext(row, kind) {
   return {
-    shippingLocation: row?.shipping_location_name || ctx.shippingLocationName || "",
-    receivingLocation: kind === "TO" ? (row?.sale_location_name || ctx.saleLocationName || "") : "",
-    carrierName: row?.carrier_name || ctx.carrierName || "",
-    customer: row?.customer || ctx.customer || "",
+    shippingLocation: row?.shipping_location_name || "",
+    receivingLocation: kind === "TO" ? (row?.sale_location_name || "") : "",
+    carrierName: row?.carrier_name || "",
+    customer: row?.customer || "",
   };
+}
+
+/** What a caller may see of a recipient list: staff see the mailboxes, carriers only roles and the division. */
+export function maskPlan(plan, s) {
+  if (seesInternal(s)) return { recipients: plan.intended, deliveredTo: plan.delivered };
+  return { recipients: plan.intended.map((r) => ({ roles: r.roles, division: r.division })), deliveredTo: [] };
 }
 
 /** Applies the override: delivered = [override] while it is on, otherwise the real list. */
@@ -140,40 +192,43 @@ const publicChange = (r) => ({
 export function createOrderChanges({ store, settings, sendEmail, now = Date.now, log = () => {} }) {
   const guardRole = (s) => { if (!settings.roles.includes(s.appRole)) throw new HttpError(403, "role_not_allowed"); };
 
-  async function preview(num, body, s) {
+  async function loadOrder(num, s) {
     guardRole(s);
+    const row = typeof store.getHistoryRow === "function" ? await store.getHistoryRow(num) : null;
+    if (!ownsOrder(s, row)) throw new HttpError(403, "not_your_order");
+    return row;
+  }
+
+  async function planFor(num, row) {
     const kind = orderKindOf(num);
-    const ctx = body?.context && typeof body.context === "object" ? body.context : {};
-    const c = await orderContext(store, num, kind, {
-      shippingLocationName: clean(ctx.shippingLocationName, 120), saleLocationName: clean(ctx.saleLocationName, 120),
-      carrierName: clean(ctx.carrierName, 120), customer: clean(ctx.customer, 120),
-    });
+    const c = orderContext(row, kind);
     const contacts = typeof store.listDivisionContacts === "function" ? await store.listDivisionContacts() : [];
     const r = resolveRecipients({ kind, shippingLocation: c.shippingLocation, receivingLocation: c.receivingLocation, carrierName: c.carrierName, contacts, dispatcher: settings.dispatcher });
-    const plan = deliveryPlan(r.recipients, settings);
-    return { orderNum: num, orderKind: kind, recipients: plan.intended, deliveredTo: plan.delivered, testMode: plan.override, unresolved: r.unresolved };
+    if (!row && !r.unresolved.includes("order: unknown")) r.unresolved.push("order: unknown"); // not in our data: dispatcher + fallback only
+    return { kind, c, r, plan: deliveryPlan(r.recipients, settings) };
+  }
+
+  async function preview(num, body, s) {
+    const row = await loadOrder(num, s);
+    const { kind, r, plan } = await planFor(num, row);
+    const m = maskPlan(plan, s);
+    return { orderNum: num, orderKind: kind, recipients: m.recipients, deliveredTo: m.deliveredTo, testMode: plan.override, unresolved: seesInternal(s) ? r.unresolved : r.unresolved.length ? ["division"] : [] };
   }
 
   async function create(num, body, s) {
-    guardRole(s);
-    const kind = orderKindOf(num);
-    const { changes, reason, context } = validateChange(body);
+    const row = await loadOrder(num, s);
+    const { changes, reason } = validateChange(body, row);
     const hash = requestHash(num, s.carrier, changes, reason);
-    const recent = await store.findRecentOrderChange(num, hash, new Date(now() - DEDUPE_WINDOW_MS).toISOString());
-    if (recent) return { status: 200, body: { duplicate: true, changeId: recent.change_id, emailStatus: recent.email_status } };
-
-    const c = await orderContext(store, num, kind, context);
-    const contacts = typeof store.listDivisionContacts === "function" ? await store.listDivisionContacts() : [];
-    const r = resolveRecipients({ kind, shippingLocation: c.shippingLocation, receivingLocation: c.receivingLocation, carrierName: c.carrierName, contacts, dispatcher: settings.dispatcher });
-    const plan = deliveryPlan(r.recipients, settings);
+    const { kind, c, r, plan } = await planFor(num, row);
     const changeId = randomUUID();
     const notified = { intended: plan.intended, delivered: plan.delivered, override: plan.override, unresolved: r.unresolved };
-    await store.insertOrderChanges(changes.map((ch) => ({
+    const rec = await store.recordOrderChange(changes.map((ch) => ({
       id: randomUUID(), change_id: changeId, order_num: num, order_kind: kind, field: ch.field, old_value: ch.old, new_value: ch.new,
       reason, changed_by: s.carrier, request_hash: hash,
       context: { carrierName: c.carrierName, shippingLocation: c.shippingLocation, receivingLocation: c.receivingLocation, customer: c.customer },
       notified_recipients: notified, email_status: "pending",
-    })));
+    })), { orderNum: num, hash, sinceIso: new Date(now() - DEDUPE_WINDOW_MS).toISOString() });
+    if (rec.duplicate) return { status: 200, body: { duplicate: true, changeId: rec.duplicate.change_id, emailStatus: rec.duplicate.email_status } };
 
     let emailStatus = "failed";
     try {
@@ -186,10 +241,13 @@ export function createOrderChanges({ store, settings, sendEmail, now = Date.now,
       log("order_change_email_failed", { orderNum: num, code: e && e.code, message: e && e.message });
     }
     await store.setOrderChangeEmailStatus(changeId, emailStatus);
-    return { status: 200, body: { changeId, orderNum: num, count: changes.length, emailStatus, testMode: plan.override, recipients: plan.intended, deliveredTo: plan.delivered } };
+    const m = maskPlan(plan, s);
+    return { status: 200, body: { changeId, orderNum: num, count: changes.length, emailStatus, testMode: plan.override, recipients: m.recipients, deliveredTo: m.deliveredTo } };
   }
 
-  async function history(num) {
+  async function history(num, s) {
+    await loadOrder(num, s);
+
     const rows = await store.listOrderChanges(num);
     const byId = new Map();
     for (const r of rows) {
@@ -200,8 +258,14 @@ export function createOrderChanges({ store, settings, sendEmail, now = Date.now,
     return { orderNum: num, changed: byId.size > 0, changes: [...byId.values()] };
   }
 
-  async function changedSummary(numsParam) {
-    const nums = String(numsParam ?? "").split(",").map((x) => x.trim().toUpperCase()).filter((x) => ORDER_NUM.test(x)).slice(0, 300);
+  async function changedSummary(numsParam, s) {
+    guardRole(s);
+    let nums = [...new Set(String(numsParam ?? "").split(",").map((x) => x.trim().toUpperCase()).filter((x) => ORDER_NUM.test(x)))].slice(0, 300);
+    if (!seesInternal(s) && nums.length) { // carriers only learn about their own orders
+      const rows = typeof store.getHistoryRows === "function" ? await store.getHistoryRows(nums) : [];
+      const own = new Set(rows.filter((row) => ownsOrder(s, row)).map((row) => row.so_num));
+      nums = nums.filter((n) => own.has(n));
+    }
     return { changed: nums.length ? await store.changedSummary(nums) : {} };
   }
 
@@ -211,7 +275,7 @@ export function createOrderChanges({ store, settings, sendEmail, now = Date.now,
     superOnly(s);
     const division = clean(body?.division, 60);
     const emails = Array.isArray(body?.emails) ? body.emails.map((e) => String(e).trim().toLowerCase()) : [];
-    const keywords = Array.isArray(body?.locationKeywords) ? body.locationKeywords.map((k) => clean(k, 60)).filter(Boolean).slice(0, 20) : [];
+    const keywords = Array.isArray(body?.locationKeywords) ? body.locationKeywords.map((k) => clean(k, 60)).filter((k) => k.length >= 3).slice(0, 20) : [];
     if (!division) throw new HttpError(400, "division_required");
     if (emails.length === 0 || emails.length > 10 || !emails.every(isGroupeQl)) throw new HttpError(422, "emails_invalid");
     await store.upsertDivisionContact({ division, emails, location_keywords: keywords, updated_by: s.carrier });

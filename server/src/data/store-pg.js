@@ -77,7 +77,32 @@ export class PgStore {
   }
 
   // order changes (overlay) + division contacts
-  async getHistoryRow(num) { return (await this.q("select shipping_location_name, sale_location_name, carrier_name, customer from delivery_history where so_num = $1", [num])).rows[0] ?? null; }
+  async getHistoryRow(num) { return (await this.q("select so_num, shipping_location_name, sale_location_name, carrier_name, truck_name, customer, service_type, status, city, ship_date, event_start_date from delivery_history where so_num = $1", [num])).rows[0] ?? null; }
+  async getHistoryRows(nums) { return (await this.q("select so_num, carrier_name, truck_name from delivery_history where so_num = any($1::text[])", [nums])).rows; }
+  /** One transaction: per-order advisory lock, duplicate check, then all rows. A failure leaves nothing behind. */
+  async recordOrderChange(rows, { orderNum, hash, sinceIso }) {
+    const c = await this.pool.connect();
+    try {
+      await c.query("begin");
+      await c.query("select pg_advisory_xact_lock(hashtext($1))", ["order-change:" + orderNum]);
+      const dup = (await c.query("select change_id, email_status from order_changes where order_num = $1 and request_hash = $2 and changed_at >= $3 limit 1", [orderNum, hash, sinceIso])).rows[0];
+      if (dup) { await c.query("rollback"); return { duplicate: dup }; }
+      for (const r of rows) {
+        await c.query(
+          `insert into order_changes (id, change_id, order_num, order_kind, field, old_value, new_value, reason, changed_by, request_hash, context, notified_recipients, email_status)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13)`,
+          [r.id, r.change_id, r.order_num, r.order_kind, r.field, r.old_value, r.new_value, r.reason, r.changed_by, r.request_hash, JSON.stringify(r.context ?? {}), JSON.stringify(r.notified_recipients ?? {}), r.email_status],
+        );
+      }
+      await c.query("commit");
+      return { inserted: rows.length };
+    } catch (e) {
+      try { await c.query("rollback"); } catch { /* connection already gone */ }
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
   async insertOrderChanges(rows) {
     for (const r of rows) {
       await this.q(

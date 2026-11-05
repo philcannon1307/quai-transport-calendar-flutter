@@ -10,6 +10,9 @@ import { HttpError } from "./handler.js";
 
 const TZ = "America/Toronto";
 export const HOURLY_LIMIT = 20;
+// An order-change notice is one change mailed to several inboxes: it must never be half-sent. Its volume is bounded
+// per change (20 changes / 10 min per login in routes.js), so the per-recipient hourly cap is lifted for it.
+export const ORDER_CHANGE_SEND_LIMIT = 1000;
 // A claim still 'pending' after this long means the server died between claim and send: it expires to 'failed' so a retry can go through.
 export const STALE_PENDING_MS = 10 * 60_000;
 const SITE = "Groupe QL — Transport";
@@ -234,7 +237,7 @@ export async function sendTransactional({ body, session, store, provider, baseUr
     // Insert-first: the claim is atomic (unique key + per-carrier lock), so concurrent retries cannot both send.
     const claim = await store.claimSend(
       { message_id: messageId, template_name: templateName, recipient_email: to, status: "pending", metadata: meta },
-      { key, carrier: session.carrier, limit: HOURLY_LIMIT, sinceIso: since, staleBeforeIso: staleBefore },
+      { key, carrier: session.carrier, limit: templateName === "order-change" ? ORDER_CHANGE_SEND_LIMIT : HOURLY_LIMIT, sinceIso: since, staleBeforeIso: staleBefore },
     );
     if (claim.state === "duplicate") { duplicates++; continue; }
     if (claim.state === "throttled") { throttled = true; break; }

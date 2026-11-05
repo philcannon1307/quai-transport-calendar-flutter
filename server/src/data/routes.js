@@ -66,6 +66,7 @@ export function createDataApi({ config, store, provider, now = Date.now, log = (
   const allowedOrigins = config.allowedOrigins ?? new Set();
   const ocSettings = config.data?.orderChanges ?? orderChangeSettings({}).settings;
   const changeLimiter = new RateLimiter({ max: 20, windowMs: 10 * 60_000, now });
+  const previewLimiter = new RateLimiter({ max: 60, windowMs: 10 * 60_000, now });
   const orderChanges = createOrderChanges({
     store, settings: ocSettings, now, log,
     sendEmail: (changeId, s) => sendTransactional({
@@ -160,18 +161,22 @@ export function createDataApi({ config, store, provider, now = Date.now, log = (
         }
         if (parts[1] === "changed" && parts.length === 2) {
           if (req.method !== "GET") throw new HttpError(405, "method_not_allowed");
-          return reply(200, await orderChanges.changedSummary(url.searchParams.get("nums")));
+          return reply(200, await orderChanges.changedSummary(url.searchParams.get("nums"), s));
         }
         if (parts.length >= 3 && parts[2] === "changes") {
           const num = validateOrderNum(decodeURIComponent(parts[1]));
-          if (parts.length === 3 && req.method === "GET") return reply(200, await orderChanges.history(num));
+          if (parts.length === 3 && req.method === "GET") return reply(200, await orderChanges.history(num, s));
           if (parts.length === 3 && req.method === "POST") {
             const wait = changeLimiter.hit(s.carrier);
             if (wait > 0) return reply(429, { error: "too_many_changes", retryAfter: wait }, { "Retry-After": String(wait) });
             const out = await orderChanges.create(num, await readJson(req), s);
             return reply(out.status, out.body);
           }
-          if (parts.length === 4 && parts[3] === "preview" && req.method === "POST") return reply(200, await orderChanges.preview(num, await readJson(req), s));
+          if (parts.length === 4 && parts[3] === "preview" && req.method === "POST") {
+            const wait = previewLimiter.hit(s.carrier);
+            if (wait > 0) return reply(429, { error: "too_many_changes", retryAfter: wait }, { "Retry-After": String(wait) });
+            return reply(200, await orderChanges.preview(num, await readJson(req), s));
+          }
           throw new HttpError(405, "method_not_allowed");
         }
         throw new HttpError(404, "not_found");

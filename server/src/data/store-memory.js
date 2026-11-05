@@ -97,6 +97,15 @@ export class MemoryStore {
 
   // order changes (overlay) + division contacts
   async getHistoryRow(num) { return this.history.get(num) ?? null; }
+  async getHistoryRows(nums) { return nums.map((n) => this.history.get(n)).filter(Boolean); }
+  /** Atomic dedupe + insert (no await between the check and the write). */
+  async recordOrderChange(rows, { orderNum, hash, sinceIso }) {
+    const dup = this.orderChanges.find((r) => r.order_num === orderNum && r.request_hash === hash && r.changed_at >= sinceIso);
+    if (dup) return { duplicate: { change_id: dup.change_id, email_status: dup.email_status } };
+    const at = new Date().toISOString();
+    for (const r of rows) this.orderChanges.push({ ...r, changed_at: at });
+    return { inserted: rows.length };
+  }
   async insertOrderChanges(rows) {
     const at = new Date().toISOString();
     for (const r of rows) this.orderChanges.push({ ...r, changed_at: at });

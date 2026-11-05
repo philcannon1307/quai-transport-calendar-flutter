@@ -28,3 +28,8 @@ create table if not exists division_contacts (
   updated_at         timestamptz not null default now()
 );
 commit;
+
+-- Rollback (manual, only if the feature is withdrawn; this deletes the change history):
+--   drop table if exists order_changes;
+--   drop table if exists division_contacts;
+-- Needs PostgreSQL 13+ (gen_random_uuid) or the pgcrypto extension. Run this migration BEFORE deploying the code.
