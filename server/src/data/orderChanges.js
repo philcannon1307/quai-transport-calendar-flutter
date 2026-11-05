@@ -228,7 +228,11 @@ export function createOrderChanges({ store, settings, sendEmail, now = Date.now,
       context: { carrierName: c.carrierName, shippingLocation: c.shippingLocation, receivingLocation: c.receivingLocation, customer: c.customer },
       notified_recipients: notified, email_status: "pending",
     })), { orderNum: num, hash, sinceIso: new Date(now() - DEDUPE_WINDOW_MS).toISOString() });
-    if (rec.duplicate) return { status: 200, body: { duplicate: true, changeId: rec.duplicate.change_id, emailStatus: rec.duplicate.email_status } };
+    if (rec.duplicate) {
+      // Nothing is stored or mailed again. testMode tells the app which wording to use (same value as a fresh send).
+      const dm = maskPlan(plan, s);
+      return { status: 200, body: { duplicate: true, changeId: rec.duplicate.change_id, orderNum: num, emailStatus: rec.duplicate.email_status, testMode: plan.override, recipients: dm.recipients, deliveredTo: dm.deliveredTo } };
+    }
 
     let emailStatus = "failed";
     try {

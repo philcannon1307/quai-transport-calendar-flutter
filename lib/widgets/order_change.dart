@@ -114,6 +114,32 @@ class _OrderChangeScreenState extends ConsumerState<OrderChangeScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _prefillFromSaved();
+  }
+
+  /// Start from the latest saved overlay, not from NetSuite: "before" in the dialog and the diff then match what the ticket shows now.
+  Future<void> _prefillFromSaved() async {
+    try {
+      final groups = await ref.read(orderChangesProvider(widget.order.soNum).future);
+      if (!mounted) return;
+      final saved = latestSavedValues(groups, _ctl.keys);
+      if (saved.isEmpty) return;
+      setState(() {
+        saved.forEach((key, value) {
+          final c = _ctl[key]!;
+          final untouched = c.text == (_before[key] ?? "");
+          _before[key] = value;
+          if (untouched) c.text = value;
+        });
+      });
+    } catch (_) {
+      // history unavailable: keep the NetSuite values
+    }
+  }
+
+  @override
   void dispose() {
     for (final c in _ctl.values) {
       c.dispose();
@@ -170,7 +196,11 @@ class _OrderChangeScreenState extends ConsumerState<OrderChangeScreen> {
       ref.invalidate(orderChangesProvider(widget.order.soNum));
       ref.invalidate(changedOrdersProvider);
       if (!mounted) return;
-      final msg = res.emailFailed
+      final msg = res.duplicate
+          ? (res.testMode
+              ? bi(s, "Déjà enregistré — aucun nouvel avis envoyé (mode TEST).", "Already saved — no new notice sent (TEST mode).")
+              : bi(s, "Déjà enregistré — aucun nouvel avis envoyé.", "Already saved — no new notice sent."))
+          : res.emailFailed
           ? bi(s, "Modification enregistrée, mais l'avis par courriel n'a pas pu être envoyé.", "Change saved, but the e-mail notice could not be sent.")
           : res.testMode
               ? bi(s, "Modification enregistrée. Avis envoyé en mode TEST (adresse de test seulement).", "Change saved. Notice sent in TEST mode (test address only).")

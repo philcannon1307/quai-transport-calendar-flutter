@@ -150,6 +150,9 @@ test("dedupe: the same change twice mails once; a different change mails again",
     const b = await (await call(app, "POST", "/orders/SO20448/changes", GAT(), ch())).json();
     assert.equal(b.duplicate, true);
     assert.equal(b.changeId, a.changeId);
+    assert.equal(b.testMode, a.testMode, "duplicate answer carries the same testMode as a fresh send");
+    assert.equal(b.testMode, true);
+    assert.deepEqual(b.deliveredTo, a.deliveredTo);
     assert.equal(app.sent.length, 1);
     assert.equal(app.store.orderChanges.length, 1);
     await call(app, "POST", "/orders/SO20448/changes", GAT(), ch({ changes: [{ field: "memo", old: "", new: "x" }] }));
