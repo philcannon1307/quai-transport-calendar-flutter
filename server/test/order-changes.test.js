@@ -331,3 +331,96 @@ test("location matching is by whole words; short keywords are refused", async ()
     assert.deepEqual((await (await call(app, "GET", "/orders/division-contacts", SUPER())).json()).contacts[0].location_keywords, ["rouyn"]);
   } finally { await app.close(); }
 });
+
+// ---------------------------------------------------------------- line-by-line changes
+const L = (lines, extra = {}) => ({ lines, ...extra });
+const bad = (body, code) => assert.throws(() => validateChange(body), (e) => e.status === code || e.statusCode === code, JSON.stringify(body).slice(0, 80));
+
+test("lines: validation - integers >= 0, blank before = 0, no-op lines skipped, max 50, duplicates, note-only", () => {
+  const v = validateChange(L([{ item: "2x4x8", before: "10", after: "8", note: " cassé " }, { item: "Vis", after: 3 }, { item: "Same", before: "5", after: "5" }], { reason: "client" }));
+  assert.deepEqual(v.changes, [
+    { field: "item:2x4x8", old: "10", new: "8", note: "cassé" },
+    { field: "item:Vis", old: "0", new: "3", note: "" },
+  ]);
+  assert.equal(v.reason, "client");
+  assert.equal(validateChange(L([{ item: "A", before: "1", after: "0" }])).changes[0].new, "0", "after 0 = removed");
+  // note only
+  const n = validateChange(L([], { reason: "juste un mémo" }));
+  assert.deepEqual(n.changes, [{ field: "note", old: "", new: "juste un mémo", note: "" }]);
+  bad(L([]), 422); // nothing at all
+  bad(L([{ item: "A", before: "1", after: "1" }]), 422); // only no-ops, no note
+  bad(L([{ item: "A", before: "x", after: "1" }]), 422);
+  bad(L([{ item: "A", before: "1", after: "-1" }]), 422);
+  bad(L([{ item: "A", before: "1", after: "1.5" }]), 422);
+  bad(L([{ item: "A", before: "1" }]), 422); // after missing
+  bad(L([{ item: "A", before: 1, after: 2.5 }]), 422);
+  bad(L([{ item: "A", before: "1234567", after: "1" }]), 422);
+  bad(L([{ item: "", after: "1" }]), 422);
+  bad(L([{ item: "x".repeat(71), after: "1" }]), 422);
+  bad(L([{ item: "A", after: "1" }, { item: " a ", after: "2" }]), 422); // duplicate
+  bad(L(Array.from({ length: 51 }, (_, i) => ({ item: "I" + i, after: "1" }))), 422);
+  assert.equal(validateChange(L(Array.from({ length: 50 }, (_, i) => ({ item: "I" + i, after: "1" })))).changes.length, 50);
+  bad({ lines: "nope" }, 400);
+  bad(L(["x"]), 400);
+  bad(L([{ item: 5, after: "1" }]), 400);
+  bad(L([{ item: "A", after: "1", note: 7 }]), 400);
+});
+
+test("lines: stored per line with its note, history shows them, the e-mail lists each line in a table plus the general note", async () => {
+  const app = await boot();
+  try {
+    const res = await call(app, "POST", "/orders/SO20448/changes", GAT(), L([
+      { item: "2x4x8", before: "10", after: "8", note: "cassé" },
+      { item: "Vis 3po", before: "", after: "20" },
+      { item: "Clous", before: "4", after: "0" },
+    ], { reason: "Appel du client" }));
+    assert.equal(res.status, 200);
+    assert.equal(app.sent.length, 1);
+    const html = app.sent[0].html, text = app.sent[0].text;
+    assert.match(html, /<table/);
+    assert.match(html, /2x4x8/); assert.match(html, /cassé/);
+    assert.match(html, /Ajouté \/ Added/); assert.match(html, /Retiré \/ Removed/); assert.match(html, /Quantité modifiée \/ Quantity changed/);
+    assert.match(html, /Mémo \/ Note :<\/strong> Appel du client/);
+    assert.match(text, /- 2x4x8 : 10 → 8 \(Quantité modifiée \/ Quantity changed\) — cassé/);
+    assert.match(text, /- Vis 3po : 0 → 20 \(Ajouté/);
+    assert.match(text, /Mémo \/ Note : Appel du client/);
+    assert.match(app.sent[0].subject, /^\[TEST\] Commande modifiée \/ Order changed — SO20448/);
+    const h = await (await call(app, "GET", "/orders/SO20448/changes", GAT())).json();
+    assert.equal(h.changes.length, 1);
+    const f = h.changes[0].fields;
+    assert.equal(f.length, 3);
+    const a = f.find((x) => x.field === "item:2x4x8");
+    assert.deepEqual(a, { field: "item:2x4x8", old: "10", new: "8", note: "cassé" });
+    assert.equal(f.find((x) => x.field === "item:Vis 3po").note, undefined, "no note key when empty");
+    assert.equal(h.changes[0].reason, "Appel du client");
+  } finally { await app.close(); }
+});
+
+test("lines: note-only change is stored and mailed; legacy field entries still render in the e-mail and history", async () => {
+  const app = await boot();
+  try {
+    assert.equal((await call(app, "POST", "/orders/SO20448/changes", GAT(), L([], { reason: "Livrer après 14h" }))).status, 200);
+    assert.match(app.sent[0].html, /Livrer après 14h/);
+    assert.equal((await call(app, "POST", "/orders/SO20448/changes", GAT(), ch())).status, 200);
+    assert.match(app.sent[1].html, /Date d.{1,6}expédition \/ Ship date/);
+    assert.doesNotMatch(app.sent[1].html, /<table/);
+    const h = await (await call(app, "GET", "/orders/SO20448/changes", GAT())).json();
+    assert.equal(h.changes.length, 2);
+  } finally { await app.close(); }
+});
+
+test("lines: dedupe sees the line note, ownership and bad input are enforced over HTTP", async () => {
+  const app = await boot();
+  try {
+    const body = L([{ item: "A", before: "1", after: "2", note: "x" }]);
+    assert.equal((await call(app, "POST", "/orders/SO20448/changes", GAT(), body)).status, 200);
+    const dup = await (await call(app, "POST", "/orders/SO20448/changes", GAT(), body)).json();
+    assert.equal(dup.duplicate, true);
+    assert.equal((await call(app, "POST", "/orders/SO20448/changes", GAT(), L([{ item: "A", before: "1", after: "2", note: "y" }]))).status, 200, "different note = different change");
+    assert.equal(app.sent.length, 2);
+    assert.equal((await call(app, "POST", "/orders/SO20448/changes", LIND(), body)).status, 403);
+    assert.equal((await call(app, "POST", "/orders/SO20448/changes", GAT(), L([{ item: "A", after: "-3" }]))).status, 422);
+    assert.equal((await call(app, "POST", "/orders/SO20448/changes", GAT(), L([]))).status, 422);
+    assert.equal((await call(app, "POST", "/orders/SO20448/changes", LOGI(), body)).status, 200);
+  } finally { await app.close(); }
+});

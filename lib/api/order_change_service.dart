@@ -7,7 +7,8 @@ import "backend_gateway.dart";
 /// One HTTP call to the data API ("/orders/..."). Real one = dio; tests use a fake.
 abstract class OrderChangeTransport {
   bool get configured;
-  Future<Map<String, dynamic>> send(String method, String path, {Object? body, Map<String, String>? query});
+  Future<Map<String, dynamic>> send(String method, String path,
+      {Object? body, Map<String, String>? query});
 }
 
 class UnconfiguredOrderChangeTransport implements OrderChangeTransport {
@@ -15,14 +16,19 @@ class UnconfiguredOrderChangeTransport implements OrderChangeTransport {
   @override
   bool get configured => false;
   @override
-  Future<Map<String, dynamic>> send(String method, String path, {Object? body, Map<String, String>? query}) =>
+  Future<Map<String, dynamic>> send(String method, String path,
+          {Object? body, Map<String, String>? query}) =>
       Future<Map<String, dynamic>>.error(const BackendNotConfigured());
 }
 
 class DioOrderChangeTransport implements OrderChangeTransport {
-  DioOrderChangeTransport({required String baseUrl, required this.sessionToken, Dio? dio})
+  DioOrderChangeTransport(
+      {required String baseUrl, required this.sessionToken, Dio? dio})
       : baseUrl = baseUrl.replaceAll(RegExp(r"/+$"), ""),
-        _dio = dio ?? Dio(BaseOptions(connectTimeout: const Duration(seconds: 20), receiveTimeout: const Duration(seconds: 30)));
+        _dio = dio ??
+            Dio(BaseOptions(
+                connectTimeout: const Duration(seconds: 20),
+                receiveTimeout: const Duration(seconds: 30)));
 
   final String baseUrl;
   final String? Function() sessionToken;
@@ -32,9 +38,11 @@ class DioOrderChangeTransport implements OrderChangeTransport {
   bool get configured => baseUrl.isNotEmpty;
 
   @override
-  Future<Map<String, dynamic>> send(String method, String path, {Object? body, Map<String, String>? query}) async {
+  Future<Map<String, dynamic>> send(String method, String path,
+      {Object? body, Map<String, String>? query}) async {
     final jwt = sessionToken();
-    if (jwt == null || jwt.isEmpty) throw const BackendException(401, "not_signed_in");
+    if (jwt == null || jwt.isEmpty)
+      throw const BackendException(401, "not_signed_in");
     try {
       final res = await _dio.request<dynamic>(
         "$baseUrl$path",
@@ -42,17 +50,23 @@ class DioOrderChangeTransport implements OrderChangeTransport {
         queryParameters: query,
         options: Options(
           method: method,
-          headers: <String, String>{"X-Quai-Session": jwt, "Content-Type": "application/json"},
+          headers: <String, String>{
+            "X-Quai-Session": jwt,
+            "Content-Type": "application/json"
+          },
           responseType: ResponseType.json,
           validateStatus: (_) => true,
         ),
       );
       final status = res.statusCode ?? 0;
       final d = res.data;
-      if (status >= 400) throw BackendException(status, d is Map ? (d["error"] ?? "").toString() : "");
+      if (status >= 400)
+        throw BackendException(
+            status, d is Map ? (d["error"] ?? "").toString() : "");
       return d is Map ? d.cast<String, dynamic>() : <String, dynamic>{};
     } on DioException catch (e) {
-      throw BackendException(e.response?.statusCode ?? 0, e.message ?? "network error");
+      throw BackendException(
+          e.response?.statusCode ?? 0, e.message ?? "network error");
     }
   }
 }
@@ -64,17 +78,36 @@ class OrderChangeService {
 
   bool get configured => transport.configured;
 
-  static String _path(String num, [String tail = ""]) => "/orders/" + Uri.encodeComponent(num.trim().toUpperCase()) + "/changes" + tail;
+  static String _path(String num, [String tail = ""]) =>
+      "/orders/" +
+      Uri.encodeComponent(num.trim().toUpperCase()) +
+      "/changes" +
+      tail;
 
   Future<PreviewResult> preview(Order order) async {
-    final j = await transport.send("POST", _path(order.soNum, "/preview"), body: <String, dynamic>{"context": orderContext(order)});
+    final j = await transport.send("POST", _path(order.soNum, "/preview"),
+        body: <String, dynamic>{"context": orderContext(order)});
     return PreviewResult.fromJson(j);
   }
 
-  Future<SubmitResult> submit(Order order, List<FieldChange> changes, {String reason = ""}) async {
-    final j = await transport.send("POST", _path(order.soNum), body: <String, dynamic>{
+  Future<SubmitResult> submit(Order order, List<FieldChange> changes,
+      {String reason = ""}) async {
+    final j = await transport
+        .send("POST", _path(order.soNum), body: <String, dynamic>{
       "changes": changes.map((c) => c.toJson()).toList(),
       "reason": reason.trim(),
+      "context": orderContext(order),
+    });
+    return SubmitResult.fromJson(j);
+  }
+
+  /// Line-by-line change: modified article lines + one optional general note. The server derives who is told from its own data.
+  Future<SubmitResult> submitLines(Order order, List<ChangeLine> lines,
+      {String note = ""}) async {
+    final j = await transport
+        .send("POST", _path(order.soNum), body: <String, dynamic>{
+      "lines": lines.map((l) => l.toJson()).toList(),
+      "reason": note.trim(),
       "context": orderContext(order),
     });
     return SubmitResult.fromJson(j);
@@ -84,14 +117,23 @@ class OrderChangeService {
     final j = await transport.send("GET", _path(orderNum));
     final list = j["changes"];
     if (list is! List) return <ChangeGroup>[];
-    return list.whereType<Map>().map((e) => ChangeGroup.fromJson(e.cast<String, dynamic>())).toList();
+    return list
+        .whereType<Map>()
+        .map((e) => ChangeGroup.fromJson(e.cast<String, dynamic>()))
+        .toList();
   }
 
   /// Which of [orderNums] carry saved changes (drives the "Modifié / Changed" badge).
   Future<Map<String, ChangedInfo>> changed(List<String> orderNums) async {
-    final nums = orderNums.map((n) => n.trim().toUpperCase()).where((n) => n.isNotEmpty).toSet().take(300).toList();
+    final nums = orderNums
+        .map((n) => n.trim().toUpperCase())
+        .where((n) => n.isNotEmpty)
+        .toSet()
+        .take(300)
+        .toList();
     if (nums.isEmpty) return <String, ChangedInfo>{};
-    final j = await transport.send("GET", "/orders/changed", query: <String, String>{"nums": nums.join(",")});
+    final j = await transport.send("GET", "/orders/changed",
+        query: <String, String>{"nums": nums.join(",")});
     final m = j["changed"];
     final out = <String, ChangedInfo>{};
     if (m is Map) {
