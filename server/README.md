@@ -146,3 +146,18 @@ Variables (all optional):
 * `DISPATCHER_EMAIL` — dispatcher/logistics mailbox, default sadm@groupeql.com.
 * `ORDER_CHANGE_ROLES` — who may post changes, default `carrier,logistique,superuser`.
 * Order change ownership: a carrier may read, preview and change an order only when `delivery_history.carrier_name` or `truck_name` is one of the names on its session (own login, backend user, linked trucks); otherwise 403 `not_your_order`. An order with no delivery_history row is refused to carriers. Logistique and SuperUser act on every order; for an unknown order they only reach the dispatcher + comptabilite fallback (flagged unresolved). Recipients and "old" values come from delivery_history, never from the client. Carriers see roles/divisions in previews, not mailboxes.
+
+
+## Prepared state ("À préparer" / "Préparé")
+
+One shared flag per order **and service day** (key = order number + the calendar day of the card; an order moved to another day starts again as "to prepare"; no date = one flag for the whole order). Stored in Postgres, shared by every logistics unit and the SuperUser; carriers read it for their own orders only.
+
+| Route | Who | What |
+|---|---|---|
+| `GET /prep-state?from=YYYY-MM-DD&to=YYYY-MM-DD` | any signed-in session | prepared orders of a window (max 62 days). `?orders=SO1,TO2` instead gives those orders on every date (max 300). Carriers only get orders they own. |
+| `PUT /prep-state/:order` body `{prepared: bool, date?: "YYYY-MM-DD", label?: "Marc"}` | `logistique`, `superuser` (others 403) | idempotent: repeating the current state answers 200 with `changed:false` and writes nothing. 120 changes / minute / login. |
+| `GET /prep-state/:order/history[?date=]` | `logistique`, `superuser` | last 50 changes within 90 days. |
+
+Roles: the exchange gives a session `app_role` `logistique` to `SADM - Logistique` and to any roster entry named `<unit> - Logistique` (`isLogistiqueUnit` in `src/roster.js`); the SuperUser login gets `superuser`. The check is on the signed role claim, never on a name.
+
+Tables `order_prep_state` and `order_prep_history` are created on first use (`create table if not exists`, like the admin aggregate cache) — no manual step is needed. `db/migrations/2026-11-06-order-prep-state.sql` and `db/schema.sql` hold the same idempotent DDL for review or a manual run. Retention: history 90 days, state rows not touched for 180 days (pruned at most once an hour on a write).

@@ -19,6 +19,8 @@ import "../widgets/brand_header.dart";
 import "../widgets/calendar_common.dart";
 import "../widgets/logistique_tabs.dart";
 import "../widgets/order_card.dart";
+import "../widgets/prep_widgets.dart";
+import "../state/prep_providers.dart";
 import "../widgets/receipt_sheet.dart";
 import "calendar_wide.dart";
 
@@ -287,7 +289,14 @@ class _PhoneBody extends ConsumerWidget {
         if (!sameDay(d, m.selected) && (m.byDay[d]?.isNotEmpty ?? false)) d
     ];
 
-    return ListView(
+    final prep = ref.watch(prepControllerProvider);
+    return Stack(fit: StackFit.expand, children: <Widget>[
+      // Not inside the list: the list drops its first rows when scrolled, the poll must keep running.
+      Positioned(
+          left: 0,
+          top: 0,
+          child: PrepSync(from: m.weekStart, to: m.weekStart.add(const Duration(days: 6)))),
+      ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: <Widget>[
         ...calendarBanners(m),
@@ -344,6 +353,7 @@ class _PhoneBody extends ConsumerWidget {
                   child: _StripDay(
                       day: d,
                       orders: m.byDay[d] ?? const <Order>[],
+                      prep: prep,
                       selected: sameDay(d, m.selected),
                       today: sameDay(d, m.today),
                       fmt: fmt)),
@@ -361,6 +371,7 @@ class _PhoneBody extends ConsumerWidget {
           Text(fmt.count(selectedOrders.length),
               style: quaiSans(c.sub, size: 13)),
         ]),
+        PrepCounter(orders: selectedOrders),
         const SizedBox(height: 10),
         if (selectedOrders.isEmpty)
           Padding(
@@ -378,7 +389,8 @@ class _PhoneBody extends ConsumerWidget {
               now: m.now,
               fmt: fmt),
       ],
-    );
+    ),
+    ]);
   }
 }
 
@@ -387,11 +399,13 @@ class _StripDay extends ConsumerWidget {
   const _StripDay(
       {required this.day,
       required this.orders,
+      required this.prep,
       required this.selected,
       required this.today,
       required this.fmt});
   final DateTime day;
   final List<Order> orders;
+  final PrepModel prep;
   final bool selected;
   final bool today;
   final CalFmt fmt;
@@ -399,7 +413,7 @@ class _StripDay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.q;
-    final dots = orders.take(3).map(serviceKindOf).toList();
+    final dots = orders.take(3).toList();
     return GestureDetector(
       key: Key("strip-${day.day}"),
       behavior: HitTestBehavior.opaque,
@@ -428,14 +442,24 @@ class _StripDay extends ConsumerWidget {
                 SizedBox(
                   height: 6,
                   child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
-                    for (final k in dots)
+                    for (final o in dots)
                       Container(
+                          key: prep.isPrepared(o)
+                              ? Key("strip-dot-prepared-${o.soNum}")
+                              : null,
                           margin: const EdgeInsets.symmetric(horizontal: 1.5),
                           width: 6,
                           height: 6,
+                          // Prepared = green (on the orange selected pill: white with a green ring).
                           decoration: BoxDecoration(
-                              color:
-                                  selected ? c.onPrimary : serviceColor(c, k),
+                              color: prep.isPrepared(o)
+                                  ? (selected ? c.onPrimary : c.confirmed)
+                                  : (selected
+                                      ? c.onPrimary
+                                      : serviceColor(c, serviceKindOf(o))),
+                              border: prep.isPrepared(o) && selected
+                                  ? Border.all(color: c.confirmed, width: 2)
+                                  : null,
                               shape: BoxShape.circle)),
                   ]),
                 ),

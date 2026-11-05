@@ -1,14 +1,18 @@
 import "package:flutter/material.dart";
+import "package:flutter_riverpod/flutter_riverpod.dart";
 
 import "../i18n/i18n.dart";
 import "../logic/calendar_week.dart";
 import "../models/order.dart";
+import "../screens/order_detail_screen.dart";
 import "../screens/ticket_sheet.dart";
+import "../state/prep_providers.dart";
 import "../theme/quai_tokens.dart";
 import "../widgets/adjustment_sheet.dart";
 import "../widgets/bilingual.dart";
 import "../widgets/contact_links.dart";
 import "../widgets/order_change.dart";
+import "../widgets/prep_widgets.dart";
 import "../widgets/status_chip.dart";
 
 /// Rail / dot colour of a service family.
@@ -26,7 +30,7 @@ Color serviceTextColor(QuaiColors c, ServiceKind k) =>
 /// Order card: 5 px service rail on the left, SO# in mono, status chip top-right, client name,
 /// destination, service tag and round call / navigate actions. The whole card opens the order sheet.
 /// `dense` is the narrower week-grid variant (cards ~163 px wide).
-class OrderCard extends StatelessWidget {
+class OrderCard extends ConsumerWidget {
   const OrderCard(
       {super.key, required this.order, required this.now, this.dense = false});
   final Order order;
@@ -46,9 +50,11 @@ class OrderCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = context.q;
     final s = StringsScope.of(context);
+    final staff = sessionCanPrepare(ref);
+    final showPrep = PrepButton.visibleFor(ref, order);
     final status = statusOf(order);
     final cancelled = status == QuaiStatus.cancelled;
     final kind = serviceKindOf(order);
@@ -161,7 +167,23 @@ class OrderCard extends StatelessWidget {
               ]),
             ],
             SizedBox(height: dense ? 6 : 8),
-            if (dense) ...<Widget>[tag, const SizedBox(height: 4), actions] else
+            if (dense) ...<Widget>[
+              tag,
+              const SizedBox(height: 4),
+              actions,
+              if (showPrep) ...<Widget>[
+                const SizedBox(height: 6),
+                PrepButton(order: order, dense: true)
+              ],
+            ] else if (showPrep) ...<Widget>[
+              tag,
+              const SizedBox(height: 8),
+              Row(crossAxisAlignment: CrossAxisAlignment.center, children: <Widget>[
+                Expanded(child: PrepButton(order: order)),
+                const SizedBox(width: 8),
+                actions,
+              ]),
+            ] else
               Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: <Widget>[Expanded(child: tag), actions]),
@@ -180,8 +202,10 @@ class OrderCard extends StatelessWidget {
           shape: const RoundedRectangleBorder(borderRadius: QuaiRadius.cardR),
           child: InkWell(
             key: Key("card-${order.soNum}"),
-            onTap: () =>
-                showTicketSheet(context, order.soNum, order: order),
+            // Logistics + SuperUser land on the order detail (call, maps, memo, prepared); carriers keep the ticket.
+            onTap: () => staff
+                ? showOrderDetail(context, order)
+                : showTicketSheet(context, order.soNum, order: order),
             child: IntrinsicHeight(
               child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
