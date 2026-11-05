@@ -40,7 +40,10 @@ jobs:
           if grep -Eq "supabase\.co|lovable\.app" config/public-config.json; then echo "::error::old backend URL in config/public-config.json"; exit 1; fi
 
       - name: Build web
-        run: set -o pipefail; flutter build web --release --dart-define-from-file=config/public-config.json 2>&1 | tee logs/build-web.log
+        env:
+          # Optional repo secret (Maps Embed API key, referrer-restricted). Empty = keyless fallback map.
+          MAPS_EMBED_KEY: ${{ secrets.MAPS_EMBED_KEY }}
+        run: set -o pipefail; flutter build web --release --dart-define-from-file=config/public-config.json --dart-define=QUAI_MAPS_EMBED_KEY="$MAPS_EMBED_KEY" 2>&1 | tee logs/build-web.log
 
       - name: Build output sanity
         run: test -f build/web/index.html && test -f build/web/main.dart.js || { echo "::error::build/web is incomplete"; exit 1; }
