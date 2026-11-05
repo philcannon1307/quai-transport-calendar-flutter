@@ -95,6 +95,23 @@ Future<void> _settle(WidgetTester tester) async {
 
 void main() {
   group("logic", () {
+    test("latestSavedValues takes the newest saved value per field, ignores unknown keys", () {
+      ChangeGroup g(String id, String at, List<FieldChange> f) => ChangeGroup(changeId: id, changedBy: "x", changedAt: at, reason: "", fields: f);
+      final groups = <ChangeGroup>[
+        g("2", "2026-11-05T14:00:00.000Z", const <FieldChange>[FieldChange(field: "memo", oldValue: "a", newValue: "second")]),
+        g("1", "2026-11-05T13:00:00.000Z", const <FieldChange>[FieldChange(field: "memo", oldValue: "", newValue: "first"), FieldChange(field: "city", oldValue: "A", newValue: "B")]),
+      ];
+      expect(latestSavedValues(groups, <String>["memo", "truck"]), <String, String>{"memo": "second"});
+      expect(latestSavedValues(groups.reversed.toList(), <String>["memo", "city"]), <String, String>{"memo": "second", "city": "B"});
+      expect(latestSavedValues(const <ChangeGroup>[], <String>["memo"]), isEmpty);
+    });
+
+    test("duplicate server answer parses with testMode", () {
+      final r = SubmitResult.fromJson(<String, dynamic>{"duplicate": true, "changeId": "c", "emailStatus": "test_override", "testMode": true});
+      expect(r.duplicate, isTrue);
+      expect(r.testMode, isTrue);
+    });
+
     test("diffChanges keeps only real changes (trimmed) and edited item lines", () {
       final before = currentValues(_so);
       final after = <String, String>{...before, "memo": "  call before  ", "city": "Saint-Donat", "ship_date": "2026-11-06"};
