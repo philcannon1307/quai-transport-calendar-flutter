@@ -1,4 +1,5 @@
 import { scryptSync, randomBytes } from "node:crypto";
+import { orderChangeSettings } from "./data/orderChanges.js";
 import { CARRIERS, SUPERUSER_NAME, allAccounts, normName } from "./roster.js";
 
 export const DEFAULT_MIDDLEWARE_URL = "https://quai-backend-methods-production.up.railway.app";
@@ -142,6 +143,8 @@ export function loadConfig(env = process.env) {
   if (!["resend", "sendgrid", "log"].includes(emailProvider)) errors.push("EMAIL_PROVIDER must be resend, sendgrid or log.");
   if (dataStore && emailProvider !== "log" && !env.EMAIL_API_KEY) errors.push("EMAIL_API_KEY is required for EMAIL_PROVIDER=" + emailProvider + ".");
   if (dataStore && emailProvider === "log") warnings.push("EMAIL_PROVIDER=log: emails are NOT sent (only logged). Set EMAIL_PROVIDER and EMAIL_API_KEY.");
+  const oc = orderChangeSettings(env);
+  errors.push(...oc.errors);
   const emailFrom = env.EMAIL_FROM || "Groupe QL Transport <noreply@notify.groupeql.com>";
 
   const uploads = {
@@ -160,7 +163,7 @@ export function loadConfig(env = process.env) {
       port, credentials, sessionSecret, sessionTtlSeconds, allowedOrigins, jobServiceUrl, jobTimeoutMs,
       superUser, trustProxyHops,
       data: {
-        store: dataStore, databaseUrl, publicBaseUrl, uploads, emailFrom, publicSiteUrl: env.PUBLIC_SITE_URL ?? "",
+        store: dataStore, databaseUrl, publicBaseUrl, uploads, emailFrom, publicSiteUrl: env.PUBLIC_SITE_URL ?? "", orderChanges: oc.settings,
         email: { provider: emailProvider, apiKey: env.EMAIL_API_KEY ?? "", replyTo: env.EMAIL_REPLY_TO ?? "" },
       },
       middleware: { url: middlewareUrl, apiKey: middlewareApiKey, timeoutMs: middlewareTimeoutMs },

@@ -13,6 +13,8 @@ export class MemoryStore {
     this.sendLog = [];
     this.suppressed = new Map(); // email -> { reason }
     this.tokens = new Map(); // email -> { token, used_at }
+    this.orderChanges = [];
+    this.divisionContacts = new Map();
   }
 
   async ping() { return true; }
@@ -92,6 +94,39 @@ export class MemoryStore {
       .sort((a, b) => (a.ship_date < b.ship_date ? 1 : -1))
       .slice(0, 2000);
   }
+
+  // order changes (overlay) + division contacts
+  async getHistoryRow(num) { return this.history.get(num) ?? null; }
+  async getHistoryRows(nums) { return nums.map((n) => this.history.get(n)).filter(Boolean); }
+  /** Atomic dedupe + insert (no await between the check and the write). */
+  async recordOrderChange(rows, { orderNum, hash, sinceIso }) {
+    const dup = this.orderChanges.find((r) => r.order_num === orderNum && r.request_hash === hash && r.changed_at >= sinceIso);
+    if (dup) return { duplicate: { change_id: dup.change_id, email_status: dup.email_status } };
+    const at = new Date().toISOString();
+    for (const r of rows) this.orderChanges.push({ ...r, changed_at: at });
+    return { inserted: rows.length };
+  }
+  async insertOrderChanges(rows) {
+    const at = new Date().toISOString();
+    for (const r of rows) this.orderChanges.push({ ...r, changed_at: at });
+  }
+  async listOrderChanges(num) { return this.orderChanges.filter((r) => r.order_num === num).sort((a, b) => (a.changed_at < b.changed_at ? 1 : -1)); }
+  async findRecentOrderChange(num, hash, sinceIso) { return this.orderChanges.find((r) => r.order_num === num && r.request_hash === hash && r.changed_at >= sinceIso) ?? null; }
+  async setOrderChangeEmailStatus(changeId, status) { for (const r of this.orderChanges) if (r.change_id === changeId) r.email_status = status; }
+  async getOrderChange(changeId) { return this.orderChanges.filter((r) => r.change_id === changeId); }
+  async changedSummary(nums) {
+    const out = {};
+    for (const r of this.orderChanges) if (nums.includes(r.order_num)) {
+      const e = out[r.order_num] ?? { count: 0, lastAt: r.changed_at, lastBy: r.changed_by, ids: new Set() };
+      e.ids.add(r.change_id);
+      if (r.changed_at >= e.lastAt) { e.lastAt = r.changed_at; e.lastBy = r.changed_by; }
+      out[r.order_num] = e;
+    }
+    for (const k of Object.keys(out)) { out[k].count = out[k].ids.size; delete out[k].ids; }
+    return out;
+  }
+  async listDivisionContacts() { return [...this.divisionContacts.values()].sort((a, b) => (a.division < b.division ? -1 : 1)); }
+  async upsertDivisionContact(row) { this.divisionContacts.set(row.division, { ...row, updated_at: new Date().toISOString() }); }
 
   // email bookkeeping
   async countRecentSends(carrier, sinceIso) {

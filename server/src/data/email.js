@@ -10,6 +10,9 @@ import { HttpError } from "./handler.js";
 
 const TZ = "America/Toronto";
 export const HOURLY_LIMIT = 20;
+// An order-change notice is one change mailed to several inboxes: it must never be half-sent. Its volume is bounded
+// per change (20 changes / 10 min per login in routes.js), so the per-recipient hourly cap is lifted for it.
+export const ORDER_CHANGE_SEND_LIMIT = 1000;
 // A claim still 'pending' after this long means the server died between claim and send: it expires to 'failed' so a retry can go through.
 export const STALE_PENDING_MS = 10 * 60_000;
 const SITE = "Groupe QL — Transport";
@@ -61,7 +64,45 @@ function adjustmentEmail(d, unsubUrl) {
   return { html, text };
 }
 
+const FIELD_LABELS = {
+  ship_date: ["Date d'expédition", "Ship date"], event_start_date: ["Date de l'événement", "Event date"], truck: ["Camion", "Truck"],
+  carrier: ["Transporteur", "Carrier"], customer: ["Client", "Customer"], address: ["Adresse", "Address"], phone: ["Téléphone", "Phone"],
+  city: ["Ville", "City"], shipping_location: ["Lieu d'expédition", "Shipping location"], receiving_location: ["Lieu de réception", "Receiving location"],
+  service_type: ["Type de service", "Service type"], status_note: ["Statut", "Status"], memo: ["Mémo", "Memo"],
+};
+const fieldLabel = (f) => {
+  if (FIELD_LABELS[f]) return FIELD_LABELS[f][0] + " / " + FIELD_LABELS[f][1];
+  const m = /^(item|custom):(.*)$/.exec(f);
+  return m ? (m[1] === "item" ? "Article / Item : " : "") + m[2] : f;
+};
+function orderChangeEmail(d, unsubUrl) {
+  const rows = Array.isArray(d.changes) ? d.changes : [];
+  const test = d.testMode
+    ? `<div style="${STYLE.item};background:#fef9c3"><p style="${STYLE.row}"><strong>TEST</strong> — destinataires prévus / intended recipients : ${esc((d.intended || []).map((r) => r.email + " (" + (r.roles || []).join("/") + ")").join(", ") || "—")}</p></div>`
+    : "";
+  const html = shell("Commande modifiée / Order changed", `<h1 style="${STYLE.h1}">Commande modifiée — ${esc(d.orderNum)}</h1>
+    ${test}<p style="${STYLE.p}">La commande a été modifiée par <strong>${esc(d.changedBy)}</strong> le ${esc(d.changedAt)}.<br>Order <strong>${esc(d.orderNum)}</strong> was changed by <strong>${esc(d.changedBy)}</strong> on ${esc(d.changedAt)}.</p>
+    <div style="${STYLE.meta}">${metaRow("Commande / Order", d.orderNum + " (" + d.orderKind + ")")}${metaRow("Client / Customer", d.customer)}${metaRow("Transporteur / Carrier", d.carrierName)}</div>
+    ${rows.map((r) => `<div style="${STYLE.item}"><p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 4px">${esc(fieldLabel(r.field))}</p><p style="${STYLE.row}">Avant / Before : <strong>${esc(r.old || "—")}</strong> → Après / After : <strong>${esc(r.new || "—")}</strong></p></div>`).join("")}
+    ${d.reason ? `<p style="${STYLE.p}"><strong>Raison / Reason :</strong> ${esc(d.reason)}</p>` : ""}
+    ${d.ticketUrl ? `<p style="text-align:center;margin:24px 0"><a href="${esc(d.ticketUrl)}" style="${STYLE.btn}">Voir le bon de commande / View picking ticket</a></p>` : ""}
+    <p style="${STYLE.footer}">Sent automatically by ${SITE}. Unsubscribe link below.</p>`, unsubUrl);
+  const text = [
+    (d.testMode ? "[TEST] " : "") + "Commande modifiée / Order changed — " + d.orderNum,
+    "Modifiée par / Changed by : " + d.changedBy + " (" + d.changedAt + ")",
+    "Transporteur / Carrier : " + (d.carrierName || "—"),
+    ...rows.map((r) => "- " + fieldLabel(r.field) + " : " + (r.old || "—") + " → " + (r.new || "—")),
+    d.reason ? "Raison / Reason : " + d.reason : "", d.ticketUrl ? "Bon de commande / Picking ticket : " + d.ticketUrl : "",
+    d.testMode ? "TEST — destinataires prévus / intended: " + (d.intended || []).map((r) => r.email).join(", ") : "",
+  ].filter(Boolean).join("\n");
+  return { html, text };
+}
+
 export const TEMPLATES = {
+  "order-change": {
+    subject: (d) => `${d?.testMode ? "[TEST] " : ""}Commande modifiée / Order changed — ${d?.orderNum || ""}${d?.customer ? ` (${d.customer})` : ""}`,
+    render: (d, u) => orderChangeEmail(d, u),
+  },
   "receipt-uploaded": {
     subject: (d) => `Nouveau reçu — ${d?.driverName || "Chauffeur"}${d?.carrierName ? ` (${d.carrierName})` : ""}`,
     render: (d, u) => fileEmail("receipt", d, u),
@@ -102,8 +143,26 @@ function parseFrom(from) {
 }
 
 // ------------------------------------------------------------------------------------ job building
-async function buildJob(template, input, session, store, baseUrl) {
+async function buildJob(template, input, session, store, baseUrl, publicSiteUrl = "") {
   const superUser = session.appRole === "superuser";
+  if (template === "order-change") {
+    if (!isUuid(input.changeId)) throw new HttpError(400, "changeId_required");
+    const rows = await store.getOrderChange(input.changeId);
+    if (!rows.length) throw new HttpError(404, "change_not_found");
+    const first = rows[0];
+    if (!superUser && first.changed_by !== session.carrier) throw new HttpError(403, "not_your_change");
+    const n = first.notified_recipients ?? {};
+    const ctx = first.context ?? {};
+    return {
+      recipients: Array.isArray(n.delivered) ? n.delivered : [],
+      data: {
+        orderNum: first.order_num, orderKind: first.order_kind, changedBy: first.changed_by, changedAt: when(first.changed_at), reason: first.reason,
+        changes: rows.map((r) => ({ field: r.field, old: r.old_value, new: r.new_value })), carrierName: ctx.carrierName, customer: ctx.customer,
+        testMode: Boolean(n.override), intended: n.intended ?? [], ticketUrl: publicSiteUrl ? publicSiteUrl.replace(/\/+$/, "") : "",
+      },
+      markTable: undefined, markId: undefined, meta: { changeId: first.change_id },
+    };
+  }
   if (template === "order-adjustment") {
     if (!isUuid(input.reportId)) throw new HttpError(400, "reportId_required");
     const row = await store.getAdjustment(input.reportId);
@@ -164,7 +223,7 @@ export async function sendTransactional({ body, session, store, provider, baseUr
   const since = new Date(Date.now() - 3600_000).toISOString();
   const staleBefore = new Date(Date.now() - STALE_PENDING_MS).toISOString();
 
-  const job = await buildJob(templateName, input, session, store, baseUrl);
+  const job = await buildJob(templateName, input, session, store, baseUrl, publicSiteUrl);
   if (job.recipients.length === 0 || !job.recipients.every(isGroupeQl)) throw new HttpError(422, "recipient_not_allowed");
 
   const tpl = TEMPLATES[templateName];
@@ -178,7 +237,7 @@ export async function sendTransactional({ body, session, store, provider, baseUr
     // Insert-first: the claim is atomic (unique key + per-carrier lock), so concurrent retries cannot both send.
     const claim = await store.claimSend(
       { message_id: messageId, template_name: templateName, recipient_email: to, status: "pending", metadata: meta },
-      { key, carrier: session.carrier, limit: HOURLY_LIMIT, sinceIso: since, staleBeforeIso: staleBefore },
+      { key, carrier: session.carrier, limit: templateName === "order-change" ? ORDER_CHANGE_SEND_LIMIT : HOURLY_LIMIT, sinceIso: since, staleBeforeIso: staleBefore },
     );
     if (claim.state === "duplicate") { duplicates++; continue; }
     if (claim.state === "throttled") { throttled = true; break; }

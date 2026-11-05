@@ -76,6 +76,55 @@ export class PgStore {
     await this.q(`update ${table} set email_sent = true where id = $1`, [id]);
   }
 
+  // order changes (overlay) + division contacts
+  async getHistoryRow(num) { return (await this.q("select so_num, shipping_location_name, sale_location_name, carrier_name, truck_name, customer, service_type, status, city, ship_date, event_start_date from delivery_history where so_num = $1", [num])).rows[0] ?? null; }
+  async getHistoryRows(nums) { return (await this.q("select so_num, carrier_name, truck_name from delivery_history where so_num = any($1::text[])", [nums])).rows; }
+  /** One transaction: per-order advisory lock, duplicate check, then all rows. A failure leaves nothing behind. */
+  async recordOrderChange(rows, { orderNum, hash, sinceIso }) {
+    const c = await this.pool.connect();
+    try {
+      await c.query("begin");
+      await c.query("select pg_advisory_xact_lock(hashtext($1))", ["order-change:" + orderNum]);
+      const dup = (await c.query("select change_id, email_status from order_changes where order_num = $1 and request_hash = $2 and changed_at >= $3 limit 1", [orderNum, hash, sinceIso])).rows[0];
+      if (dup) { await c.query("rollback"); return { duplicate: dup }; }
+      for (const r of rows) {
+        await c.query(
+          `insert into order_changes (id, change_id, order_num, order_kind, field, old_value, new_value, reason, changed_by, request_hash, context, notified_recipients, email_status)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13)`,
+          [r.id, r.change_id, r.order_num, r.order_kind, r.field, r.old_value, r.new_value, r.reason, r.changed_by, r.request_hash, JSON.stringify(r.context ?? {}), JSON.stringify(r.notified_recipients ?? {}), r.email_status],
+        );
+      }
+      await c.query("commit");
+      return { inserted: rows.length };
+    } catch (e) {
+      try { await c.query("rollback"); } catch { /* connection already gone */ }
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
+  async insertOrderChanges(rows) {
+    for (const r of rows) {
+      await this.q(
+        `insert into order_changes (id, change_id, order_num, order_kind, field, old_value, new_value, reason, changed_by, request_hash, context, notified_recipients, email_status)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13)`,
+        [r.id, r.change_id, r.order_num, r.order_kind, r.field, r.old_value, r.new_value, r.reason, r.changed_by, r.request_hash, JSON.stringify(r.context ?? {}), JSON.stringify(r.notified_recipients ?? {}), r.email_status],
+      );
+    }
+  }
+  async listOrderChanges(num) { return (await this.q("select * from order_changes where order_num = $1 order by changed_at desc, field asc", [num])).rows; }
+  async findRecentOrderChange(num, hash, sinceIso) { return (await this.q("select change_id, email_status from order_changes where order_num = $1 and request_hash = $2 and changed_at >= $3 limit 1", [num, hash, sinceIso])).rows[0] ?? null; }
+  async setOrderChangeEmailStatus(changeId, status) { await this.q("update order_changes set email_status = $2 where change_id = $1", [changeId, status]); }
+  async getOrderChange(changeId) { return (await this.q("select * from order_changes where change_id = $1 order by field asc", [changeId])).rows; }
+  async changedSummary(nums) {
+    const rows = (await this.q("select order_num, count(distinct change_id)::int as count, max(changed_at) as last_at, (array_agg(changed_by order by changed_at desc))[1] as last_by from order_changes where order_num = any($1::text[]) group by order_num", [nums])).rows;
+    return Object.fromEntries(rows.map((r) => [r.order_num, { count: r.count, lastAt: r.last_at, lastBy: r.last_by }]));
+  }
+  async listDivisionContacts() { return (await this.q("select division, emails, location_keywords, updated_by, updated_at from division_contacts order by division")).rows; }
+  async upsertDivisionContact(r) {
+    await this.q("insert into division_contacts (division, emails, location_keywords, updated_by) values ($1,$2::text[],$3::text[],$4) on conflict (division) do update set emails = excluded.emails, location_keywords = excluded.location_keywords, updated_by = excluded.updated_by, updated_at = now()", [r.division, r.emails, r.location_keywords, r.updated_by]);
+  }
+
   // delivery history (one multi-row upsert; rows are already de-duplicated by so_num)
   /** ownerNames: null = any row (SuperUser); otherwise an existing row is replaced only when it already carries one of these names. */
   async upsertHistory(rows, ownerNames = null) {
