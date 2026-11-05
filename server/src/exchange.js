@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual, scryptSync } from "node:crypto";
 import { signSession } from "./jwt.js";
 import { UpstreamError, mapLimit } from "./jobService.js";
 import {
-  CARRIERS, LOGISTIQUE, SUPERUSER_NAME, allAccounts, backendUsername, carrierByName, loadableLinked,
+  CARRIERS, LOGISTIQUE, SUPERUSER_NAME, isLogistiqueUnit, allAccounts, backendUsername, carrierByName, loadableLinked,
 } from "./roster.js";
 
 /** Constant-time string comparison (hashes first so lengths never leak). */
@@ -107,7 +107,7 @@ export function createExchange({ config, jobs, limiters, log }) {
         else log("ticket_token_unavailable", { carrier: name, account: extra[i].displayName });
       });
     }
-    const appRole = carrier.displayName === LOGISTIQUE ? "logistique" : "carrier";
+    const appRole = isLogistiqueUnit(carrier.displayName) ? "logistique" : "carrier";
     log("login_ok", { carrier: name, ip, role: appRole });
     return issue({
       carrier: carrier.displayName,

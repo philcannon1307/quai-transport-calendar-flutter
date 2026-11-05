@@ -11,6 +11,7 @@ import "../widgets/bilingual.dart";
 import "../widgets/brand_header.dart";
 import "../widgets/calendar_common.dart";
 import "../widgets/logistique_tabs.dart";
+import "../widgets/prep_widgets.dart";
 import "../widgets/order_card.dart";
 import "../widgets/receipt_sheet.dart";
 import "calendar_screen.dart";
@@ -196,6 +197,9 @@ class _WideBody extends ConsumerWidget {
     return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          PrepSync(
+              from: m.weekStart,
+              to: m.weekStart.add(Duration(days: days.length - 1))),
           ...calendarBanners(m),
           kpis(),
           const SizedBox(height: 16),

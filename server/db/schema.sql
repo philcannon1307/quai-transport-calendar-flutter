@@ -160,4 +160,27 @@ create table if not exists division_contacts (
   updated_at         timestamptz not null default now()
 );
 
+-- Order prepared state: shared "Préparé" flag per order + service date, and its history (pruned after 90 days).
+create table if not exists order_prep_state (
+  order_num      text not null,
+  service_date   text not null default '' check (service_date = '' or service_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'),
+  prepared       boolean not null,
+  updated_by     text not null default '',
+  updated_label  text not null default '',
+  updated_at     timestamptz not null default now(),
+  primary key (order_num, service_date)
+);
+create index if not exists order_prep_state_date_idx on order_prep_state (service_date);
+
+create table if not exists order_prep_history (
+  id            bigserial primary key,
+  order_num     text not null,
+  service_date  text not null default '',
+  prepared      boolean not null,
+  actor         text not null,
+  label         text not null default '',
+  at            timestamptz not null default now()
+);
+create index if not exists order_prep_history_order_idx on order_prep_history (order_num, at desc);
+
 commit;

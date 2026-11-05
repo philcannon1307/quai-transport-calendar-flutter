@@ -11,6 +11,7 @@ import { encodePath, isUuid, sessionFromToken, sessionTokenFrom } from "./guard.
 import { HttpError, MAX_JSON_BYTES, MAX_UPLOAD_BYTES, run, upload } from "./handler.js";
 import { handleUnsubscribe, sendTransactional } from "./email.js";
 import { createOrderChanges, orderChangeSettings, validateOrderNum } from "./orderChanges.js";
+import { createPrepState, strictOrderNum } from "./prepState.js";
 
 const PUBLIC_BUCKETS = new Set(["announcement-images", "receipts"]);
 // CORS: data routes answer only the origins on ALLOWED_ORIGINS (the same list as the exchange). The only
@@ -22,7 +23,7 @@ const CORS_COMMON = {
 };
 
 export function isDataPath(path) {
-  return path.startsWith("/functions/v1/") || path.startsWith("/orders/") || path.startsWith("/rest/v1/") || path.startsWith("/storage/v1/object/public/");
+  return path.startsWith("/functions/v1/") || path.startsWith("/orders/") || path === "/prep-state" || path.startsWith("/prep-state/") || path.startsWith("/rest/v1/") || path.startsWith("/storage/v1/object/public/");
 }
 
 function readBytes(req, max) {
@@ -74,6 +75,9 @@ export function createDataApi({ config, store, provider, now = Date.now, log = (
       session: s, store, provider, baseUrl, from: config.data.emailFrom, publicSiteUrl: config.data.publicSiteUrl,
     }),
   });
+
+  const prepLimiter = new RateLimiter({ max: 120, windowMs: 60_000, now });
+  const prep = createPrepState({ store, now, log });
 
   function send(res, status, body, extra = {}) {
     res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra });
@@ -148,6 +152,26 @@ export function createDataApi({ config, store, provider, now = Date.now, log = (
         }
         const out = await handleUnsubscribe({ method: req.method, token, store });
         return reply(out.status, out.body);
+      }
+
+      // ---- prepared state of an order (signed-in users; writes: logistique + superuser)
+      if (path === "/prep-state" || path.startsWith("/prep-state/")) {
+        const s = session(req);
+        const parts = path.split("/").filter(Boolean); // ["prep-state", NUM?, "history"?]
+        if (parts.length === 1) {
+          if (req.method !== "GET") throw new HttpError(405, "method_not_allowed");
+          return reply(200, await prep.list(url.searchParams, s));
+        }
+        let num;
+        try { num = strictOrderNum(decodeURIComponent(parts[1])); } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, "order_num_invalid"); }
+        if (parts.length === 2 && req.method === "PUT") {
+          const wait = prepLimiter.hit(s.carrier + "|" + s.uid);
+          if (wait > 0) return reply(429, { error: "too_many_requests", retryAfter: wait }, { "Retry-After": String(wait) });
+          return reply(200, await prep.set(num, await readJson(req), s));
+        }
+        if (parts.length === 3 && parts[2] === "history" && req.method === "GET") return reply(200, await prep.history(num, url.searchParams, s));
+        if (parts.length > 3 || (parts.length === 3 && parts[2] !== "history")) throw new HttpError(404, "not_found");
+        throw new HttpError(405, "method_not_allowed");
       }
 
       // ---- order change notice (signed-in users)
