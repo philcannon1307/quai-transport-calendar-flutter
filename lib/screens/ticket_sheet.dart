@@ -249,6 +249,9 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
                   Positioned.fill(
                       child: ref.watch(ticketPdfBuilderProvider)(
                           context, _bytes!, widget.orderNum)),
+                if (_provisional != null)
+                  Positioned.fill(
+                      child: ProvisionalTicketView(details: _provisional!)),
                 if (_error != null)
                   Positioned.fill(
                     child: Center(
