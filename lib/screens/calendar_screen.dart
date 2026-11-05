@@ -295,101 +295,102 @@ class _PhoneBody extends ConsumerWidget {
       Positioned(
           left: 0,
           top: 0,
-          child: PrepSync(from: m.weekStart, to: m.weekStart.add(const Duration(days: 6)))),
+          child: PrepSync(
+              from: m.weekStart, to: m.weekStart.add(const Duration(days: 6)))),
       ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      children: <Widget>[
-        ...calendarBanners(m),
-        if (m.isLogistique) ...<Widget>[
-          LogistiqueTabs(
-              selected: m.view,
-              orders: m.all,
-              onChanged: (v) =>
-                  ref.read(logistiqueViewProvider.notifier).state = v),
-          const SizedBox(height: 12),
-        ],
-        Row(children: <Widget>[
-          Expanded(
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(fmt.range(weekDays.first, weekDays.last),
-                      key: const Key("week-range"),
-                      style: quaiSans(c.ink,
-                          size: 20, height: 26, weight: FontWeight.w700)),
-                  Text(
-                      "${bi(s, "Vue hebdomadaire", "Weekly view")} · ${fmt.count(weekOrders.length)}",
-                      style: quaiSans(c.sub, size: 13, height: 18)),
-                ]),
-          ),
-          CircleNavButton(
-              buttonKey: const Key("week-prev"),
-              icon: Icons.chevron_left,
-              tooltip: s.t("cal.prev"),
-              onTap: () => shiftWeek(ref, -1)),
-          const SizedBox(width: 8),
-          PillButton(
-              buttonKey: const Key("week-today"),
-              label: bi(s, "Auj.", "Today"),
-              onTap: () => goToday(ref)),
-          const SizedBox(width: 8),
-          CircleNavButton(
-              buttonKey: const Key("week-next"),
-              icon: Icons.chevron_right,
-              tooltip: s.t("cal.next"),
-              onTap: () => shiftWeek(ref, 1)),
-        ]),
-        const SizedBox(height: 14),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onHorizontalDragEnd: (d) {
-            final v = d.primaryVelocity ?? 0;
-            if (v < -200) shiftWeek(ref, 1);
-            if (v > 200) shiftWeek(ref, -1);
-          },
-          child: Row(children: <Widget>[
-            for (final d in weekDays)
-              Expanded(
-                  child: _StripDay(
-                      day: d,
-                      orders: m.byDay[d] ?? const <Order>[],
-                      prep: prep,
-                      selected: sameDay(d, m.selected),
-                      today: sameDay(d, m.today),
-                      fmt: fmt)),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: <Widget>[
+          ...calendarBanners(m),
+          if (m.isLogistique) ...<Widget>[
+            LogistiqueTabs(
+                selected: m.view,
+                orders: m.all,
+                onChanged: (v) =>
+                    ref.read(logistiqueViewProvider.notifier).state = v),
+            const SizedBox(height: 12),
+          ],
+          Row(children: <Widget>[
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(fmt.range(weekDays.first, weekDays.last),
+                        key: const Key("week-range"),
+                        style: quaiSans(c.ink,
+                            size: 20, height: 26, weight: FontWeight.w700)),
+                    Text(
+                        "${bi(s, "Vue hebdomadaire", "Weekly view")} · ${fmt.count(weekOrders.length)}",
+                        style: quaiSans(c.sub, size: 13, height: 18)),
+                  ]),
+            ),
+            CircleNavButton(
+                buttonKey: const Key("week-prev"),
+                icon: Icons.chevron_left,
+                tooltip: s.t("cal.prev"),
+                onTap: () => shiftWeek(ref, -1)),
+            const SizedBox(width: 8),
+            PillButton(
+                buttonKey: const Key("week-today"),
+                label: bi(s, "Auj.", "Today"),
+                onTap: () => goToday(ref)),
+            const SizedBox(width: 8),
+            CircleNavButton(
+                buttonKey: const Key("week-next"),
+                icon: Icons.chevron_right,
+                tooltip: s.t("cal.next"),
+                onTap: () => shiftWeek(ref, 1)),
           ]),
-        ),
-        const SizedBox(height: 10),
-        ServiceLegend(kinds: legendKinds(m)),
-        const SizedBox(height: 16),
-        Row(children: <Widget>[
-          Expanded(
-              child: Text(fmt.dayLong(m.selected),
-                  key: const Key("selected-day"),
-                  style: quaiSans(c.ink,
-                      size: 17, height: 22, weight: FontWeight.w700))),
-          Text(fmt.count(selectedOrders.length),
-              style: quaiSans(c.sub, size: 13)),
-        ]),
-        PrepCounter(orders: selectedOrders),
-        const SizedBox(height: 10),
-        if (selectedOrders.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child:
-                Text(s.t("tbl.emptyDate"), style: quaiSerif(c.sub, size: 15)),
-          )
-        else
-          for (final o in selectedOrders) OrderCard(order: o, now: m.now),
-        for (final d in others)
-          _CollapsedDay(
-              key: ValueKey<DateTime>(d),
-              day: d,
-              orders: m.ordersOn(d),
-              now: m.now,
-              fmt: fmt),
-      ],
-    ),
+          const SizedBox(height: 14),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragEnd: (d) {
+              final v = d.primaryVelocity ?? 0;
+              if (v < -200) shiftWeek(ref, 1);
+              if (v > 200) shiftWeek(ref, -1);
+            },
+            child: Row(children: <Widget>[
+              for (final d in weekDays)
+                Expanded(
+                    child: _StripDay(
+                        day: d,
+                        orders: m.byDay[d] ?? const <Order>[],
+                        prep: prep,
+                        selected: sameDay(d, m.selected),
+                        today: sameDay(d, m.today),
+                        fmt: fmt)),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          ServiceLegend(kinds: legendKinds(m)),
+          const SizedBox(height: 16),
+          Row(children: <Widget>[
+            Expanded(
+                child: Text(fmt.dayLong(m.selected),
+                    key: const Key("selected-day"),
+                    style: quaiSans(c.ink,
+                        size: 17, height: 22, weight: FontWeight.w700))),
+            Text(fmt.count(selectedOrders.length),
+                style: quaiSans(c.sub, size: 13)),
+          ]),
+          PrepCounter(orders: selectedOrders),
+          const SizedBox(height: 10),
+          if (selectedOrders.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child:
+                  Text(s.t("tbl.emptyDate"), style: quaiSerif(c.sub, size: 15)),
+            )
+          else
+            for (final o in selectedOrders) OrderCard(order: o, now: m.now),
+          for (final d in others)
+            _CollapsedDay(
+                key: ValueKey<DateTime>(d),
+                day: d,
+                orders: m.ordersOn(d),
+                now: m.now,
+                fmt: fmt),
+        ],
+      ),
     ]);
   }
 }
@@ -424,11 +425,15 @@ class _StripDay extends ConsumerWidget {
         decoration: BoxDecoration(
             color: selected ? c.primary : Colors.transparent,
             borderRadius: BorderRadius.circular(QuaiRadius.lg)),
-        child: Stack(children: <Widget>[
+        // Stack.expand: the content fills the whole day cell and is centred in it (a loose Stack top-left-aligned
+        // the column, which pushed the label/number/dots off-centre inside the pill).
+        child: Stack(fit: StackFit.expand, children: <Widget>[
           Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
                 Text(fmt.dow(day),
+                    textAlign: TextAlign.center,
                     style: quaiSans(selected ? c.onPrimary : c.sub,
                         size: 10.5,
                         height: 12,
@@ -436,6 +441,7 @@ class _StripDay extends ConsumerWidget {
                         ls: .6)),
                 const SizedBox(height: 4),
                 Text("${day.day}",
+                    textAlign: TextAlign.center,
                     style: quaiSans(selected ? c.onPrimary : c.ink,
                         size: 18, height: 22, weight: FontWeight.w700)),
                 const SizedBox(height: 5),
