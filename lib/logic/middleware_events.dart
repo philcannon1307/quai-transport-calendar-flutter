@@ -45,9 +45,13 @@ Order? mapMiddlewareEvent(MiddlewareEvent e) {
   final soNum = match.group(0)!.toUpperCase();
   final segments = e.title.split("/").map((s) => s.trim()).toList();
   final lastSeg = segments.isEmpty ? "" : segments.last;
-  final isPickup = RegExp(r"ramassage|pick-?up|cueillette", caseSensitive: false).hasMatch(lastSeg);
+  final isPickup =
+      RegExp(r"ramassage|pick-?up|cueillette", caseSensitive: false)
+          .hasMatch(lastSeg);
   final fallbackCustomer = segments.length > 2 ? segments[2] : "";
-  final customer = (e.customer != null && e.customer!.isNotEmpty) ? e.customer : fallbackCustomer;
+  final customer = (e.customer != null && e.customer!.isNotEmpty)
+      ? e.customer
+      : fallbackCustomer;
   final firstSeg = segments.isNotEmpty ? segments.first : "";
   return Order(
     kind: OrderKind.order,
@@ -55,7 +59,8 @@ Order? mapMiddlewareEvent(MiddlewareEvent e) {
     soId: int.tryParse(e.salesOrderId) ?? 0,
     customer: customer,
     serviceType: isPickup ? "Pick-up" : "Livraison & Installation",
-    status: (e.soStatus ?? "").replaceFirst(RegExp(r"^Sales Order\s*:\s*", caseSensitive: false), ""),
+    status: (e.soStatus ?? "")
+        .replaceFirst(RegExp(r"^Sales Order\s*:\s*", caseSensitive: false), ""),
     eventStatus: e.status ?? "",
     shipDate: e.startDate,
     date: e.startDate,

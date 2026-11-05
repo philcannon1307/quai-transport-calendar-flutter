@@ -49,8 +49,10 @@ List<Map<String, dynamic>> historyRows(List<Order> orders, {int? carrierId}) {
 
 Order orderFromHistoryRow(Map<String, dynamic> r) {
   String? s(dynamic v) => v?.toString();
-  int? i(dynamic v) => v is int ? v : (v is num ? v.toInt() : int.tryParse(v?.toString() ?? ""));
-  final transfer = RegExp(r"^TO\d+$", caseSensitive: false).hasMatch(s(r["so_num"]) ?? "");
+  int? i(dynamic v) =>
+      v is int ? v : (v is num ? v.toInt() : int.tryParse(v?.toString() ?? ""));
+  final transfer =
+      RegExp(r"^TO\d+$", caseSensitive: false).hasMatch(s(r["so_num"]) ?? "");
   return Order(
     kind: transfer ? OrderKind.transfer : OrderKind.order,
     soNum: s(r["so_num"]) ?? "",
@@ -82,7 +84,10 @@ Order orderFromHistoryRow(Map<String, dynamic> r) {
 /// is off by a day for a Toronto user after 7 pm).
 ({String from, String to}) historyWindow(int days, DateTime now) {
   final today = DateTime(now.year, now.month, now.day);
-  return (from: isoDate(today.subtract(Duration(days: days))), to: isoDate(today));
+  return (
+    from: isoDate(today.subtract(Duration(days: days))),
+    to: isoDate(today)
+  );
 }
 
 /// Live orders win over history for the same sales order; history-only rows

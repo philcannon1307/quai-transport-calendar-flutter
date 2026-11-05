@@ -15,7 +15,8 @@ import "package:quai_calendar/state/providers.dart";
 
 Strings _strings() {
   final values = <String, String>{};
-  kOriginalKeyToArb.forEach((dotted, arb) => values[arb] = dotted.split(".").last);
+  kOriginalKeyToArb
+      .forEach((dotted, arb) => values[arb] = dotted.split(".").last);
   return Strings.forTests(values);
 }
 
@@ -32,7 +33,8 @@ Widget _app({SessionStore? store}) => ProviderScope(
 void main() {
   setUpAll(initializeDateFormatting);
 
-  testWidgets("QuaiApp builds exactly one MaterialApp on the first frame", (tester) async {
+  testWidgets("QuaiApp builds exactly one MaterialApp on the first frame",
+      (tester) async {
     // REGRESSION: app.dart used to render a loading MaterialApp while the
     // dictionary future resolved, then build a second one. The swap reset the
     // Navigator to "/", so /#/calendar and every page refresh landed on login.
@@ -43,7 +45,8 @@ void main() {
     expect(find.byType(LoginScreen), findsOneWidget);
   });
 
-  testWidgets("named routes resolve to their screens (signed in)", (tester) async {
+  testWidgets("named routes resolve to their screens (signed in)",
+      (tester) async {
     final store = MemorySessionStore();
     Session(store).signIn(token: "t", name: "InterQL");
     await tester.pumpWidget(_app(store: store));

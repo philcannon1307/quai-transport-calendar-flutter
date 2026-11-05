@@ -6,10 +6,8 @@ import "../i18n/i18n.dart";
 import "../logic/order_change.dart";
 import "../models/order.dart";
 import "../state/order_change_providers.dart";
+import "../theme/quai_tokens.dart";
 import "bilingual.dart";
-
-const Color _kChangedFg = Color(0xFF92400E);
-const Color _kChangedBg = Color(0xFFFEF3C7);
 
 /// "Modifié / Changed" chip. [changed] true = show it (used where the answer is already known).
 class ChangedChip extends StatelessWidget {
@@ -19,11 +17,13 @@ class ChangedChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = StringsScope.of(context);
+    final c = context.q;
     final n = (count ?? 0) > 1 ? " ×" + count.toString() : "";
+    // Ember "tentative" tokens (mustard on light mustard), like the Provisoire status chip.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(color: _kChangedBg, borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFF59E0B))),
-      child: Text(bi(s, "Modifié", "Changed") + n, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kChangedFg)),
+      decoration: BoxDecoration(color: c.tentativeBg, borderRadius: BorderRadius.circular(QuaiRadius.xs), border: Border.all(color: c.tentative.withValues(alpha: 0.5))),
+      child: Text(bi(s, "Modifié", "Changed") + n, style: quaiSans(c.tentative, size: 10, height: 12, weight: FontWeight.w700)),
     );
   }
 }
@@ -189,12 +189,14 @@ class _OrderChangeScreenState extends ConsumerState<OrderChangeScreen> {
   @override
   Widget build(BuildContext context) {
     final s = StringsScope.of(context);
+    final c = context.q;
     final fields = fieldsFor(widget.order);
     return Scaffold(
+      backgroundColor: c.bg,
       appBar: AppBar(
-        title: Text(bi(s, "Modifier la commande ", "Change order ") + widget.order.soNum, key: const Key("chg-title")),
+        title: Text(bi(s, "Modifier la commande ", "Change order ") + widget.order.soNum, key: const Key("chg-title"), style: quaiSans(Colors.white, size: 17, height: 22, weight: FontWeight.w700)),
         actions: <Widget>[
-          TextButton(key: const Key("chg-cancel"), onPressed: _busy ? null : () => Navigator.of(context).maybePop(), child: Text(bi(s, "Annuler", "Cancel"))),
+          TextButton(style: TextButton.styleFrom(foregroundColor: Colors.white), key: const Key("chg-cancel"), onPressed: _busy ? null : () => Navigator.of(context).maybePop(), child: Text(bi(s, "Annuler", "Cancel"))),
         ],
       ),
       body: SingleChildScrollView(
@@ -205,7 +207,7 @@ class _OrderChangeScreenState extends ConsumerState<OrderChangeScreen> {
           Text(
             bi(s, "Les modifications sont enregistrées dans l'application et les divisions concernées sont avisées par courriel. NetSuite n'est pas modifié.",
                 "Changes are saved in the app and the divisions concerned are notified by e-mail. NetSuite is not changed."),
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
+            style: quaiSans(c.sub, size: 12, height: 17),
           ),
           const SizedBox(height: 12),
           for (final f in fields)
@@ -215,24 +217,24 @@ class _OrderChangeScreenState extends ConsumerState<OrderChangeScreen> {
                 key: Key("chg-field-" + f.key),
                 controller: _ctl[f.key],
                 enabled: !_busy,
-                decoration: InputDecoration(labelText: bi(s, f.fr, f.en), border: const OutlineInputBorder(), isDense: true),
+                decoration: InputDecoration(labelText: bi(s, f.fr, f.en), isDense: true),
               ),
             ),
           const SizedBox(height: 4),
-          Text(bi(s, "Articles (quantités)", "Items (quantities)"), style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(bi(s, "Articles (quantités)", "Items (quantities)"), style: quaiSans(c.ink, size: 14, height: 20, weight: FontWeight.w700)),
           for (var i = 0; i < _items.length; i++)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Row(children: <Widget>[
-                Expanded(flex: 3, child: TextField(key: Key("chg-item-$i"), controller: _items[i].item, enabled: !_busy, decoration: InputDecoration(labelText: bi(s, "Article", "Item"), border: const OutlineInputBorder(), isDense: true))),
+                Expanded(flex: 3, child: TextField(key: Key("chg-item-$i"), controller: _items[i].item, enabled: !_busy, decoration: InputDecoration(labelText: bi(s, "Article", "Item"), isDense: true))),
                 const SizedBox(width: 6),
-                Expanded(flex: 2, child: TextField(key: Key("chg-from-$i"), controller: _items[i].from, enabled: !_busy, decoration: InputDecoration(labelText: bi(s, "Avant", "Before"), border: const OutlineInputBorder(), isDense: true))),
+                Expanded(flex: 2, child: TextField(key: Key("chg-from-$i"), controller: _items[i].from, enabled: !_busy, decoration: InputDecoration(labelText: bi(s, "Avant", "Before"), isDense: true))),
                 const SizedBox(width: 6),
-                Expanded(flex: 2, child: TextField(key: Key("chg-to-$i"), controller: _items[i].to, enabled: !_busy, decoration: InputDecoration(labelText: bi(s, "Après", "After"), border: const OutlineInputBorder(), isDense: true))),
+                Expanded(flex: 2, child: TextField(key: Key("chg-to-$i"), controller: _items[i].to, enabled: !_busy, decoration: InputDecoration(labelText: bi(s, "Après", "After"), isDense: true))),
                 IconButton(
                   key: Key("chg-item-remove-$i"),
                   onPressed: _busy ? null : () => setState(() => _items.removeAt(i).dispose()),
-                  icon: const Icon(Icons.close, size: 18),
+                  icon: Icon(Icons.close, size: 18, color: c.sub),
                 ),
               ]),
             ),
@@ -251,19 +253,19 @@ class _OrderChangeScreenState extends ConsumerState<OrderChangeScreen> {
             controller: _reason,
             enabled: !_busy,
             maxLines: 2,
-            decoration: InputDecoration(labelText: bi(s, "Raison (facultatif)", "Reason (optional)"), border: const OutlineInputBorder(), isDense: true),
+            decoration: InputDecoration(labelText: bi(s, "Raison (facultatif)", "Reason (optional)"), isDense: true),
           ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(_error!, key: const Key("chg-error"), style: const TextStyle(color: Colors.red)),
+              child: Text(_error!, key: const Key("chg-error"), style: quaiSans(c.cancelled, size: 13, height: 18, weight: FontWeight.w600)),
             ),
           const SizedBox(height: 16),
           FilledButton(
             key: const Key("chg-continue"),
             onPressed: _busy ? null : _continue,
             child: _busy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: c.onPrimary))
                 : Text(bi(s, "Continuer", "Continue")),
           ),
         ],
@@ -284,30 +286,37 @@ class ConfirmChangeDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = StringsScope.of(context);
     final fr = s.isFrench;
+    final c = context.q;
+    final body = quaiSans(c.ink, size: 13, height: 18);
+    final head = quaiSans(c.ink, size: 14, height: 20, weight: FontWeight.w700);
+    const btn = Size(0, QuaiSpace.tapMin);
     return AlertDialog(
       key: const Key("chg-confirm-dialog"),
-      title: Text(bi(s, "Confirmer la modification", "Confirm the change")),
+      backgroundColor: c.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(QuaiRadius.lg)),
+      title: Text(bi(s, "Confirmer la modification", "Confirm the change"), style: quaiSans(c.ink, size: 18, height: 24, weight: FontWeight.w700)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(order.soNum, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Text(order.soNum, style: quaiMono(c.sub, size: 13)),
             const SizedBox(height: 6),
-            for (final c in changes)
+            for (final ch in changes)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text(c.label(french: fr) + " : " + (c.oldValue.isEmpty ? "—" : c.oldValue) + " → " + (c.newValue.isEmpty ? "—" : c.newValue), style: const TextStyle(fontSize: 13)),
+                child: Text(ch.label(french: fr) + " : " + (ch.oldValue.isEmpty ? "—" : ch.oldValue) + " → " + (ch.newValue.isEmpty ? "—" : ch.newValue), style: body),
               ),
-            const Divider(),
-            Text(bi(s, "Seront avisés par courriel :", "Will be notified by e-mail:"), style: const TextStyle(fontWeight: FontWeight.w700)),
+            Divider(color: c.line),
+            Text(bi(s, "Seront avisés par courriel :", "Will be notified by e-mail:"), style: head),
             for (final r in preview.recipients)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   (r.email.isNotEmpty ? r.email + " — " : (r.division ?? "") .isNotEmpty ? r.division! + " — " : "") + r.roles.map((x) => roleLabel(x, french: fr)).join(", "),
                   key: Key("chg-recipient-" + (r.email.isNotEmpty ? r.email : r.roles.join("+"))),
-                  style: const TextStyle(fontSize: 13),
+                  style: body,
                 ),
               ),
             if (preview.unresolved.isNotEmpty)
@@ -316,28 +325,28 @@ class ConfirmChangeDialog extends StatelessWidget {
                 child: Text(
                   bi(s, "Division introuvable pour : ", "Division not found for: ") + preview.unresolved.join(", "),
                   key: const Key("chg-unresolved"),
-                  style: const TextStyle(fontSize: 12, color: Colors.deepOrange),
+                  style: quaiSans(c.cancelled, size: 12, height: 16, weight: FontWeight.w600),
                 ),
               ),
             if (preview.testMode)
               Container(
                 key: const Key("chg-test-banner"),
                 margin: const EdgeInsets.only(top: 10),
-                padding: const EdgeInsets.all(8),
-                color: const Color(0xFFFEF9C3),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: c.tentativeBg, borderRadius: BorderRadius.circular(QuaiRadius.sm)),
                 child: Text(
                   preview.deliveredTo.isEmpty
                       ? bi(s, "MODE TEST : le courriel sera envoyé seulement à l'adresse de test, pas aux destinataires ci-dessus.", "TEST MODE: the e-mail goes only to the test address, not to the recipients above.")
                       : bi(s, "MODE TEST : le courriel sera envoyé seulement à ", "TEST MODE: the e-mail will only be sent to ") + preview.deliveredTo.join(", "),
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  style: quaiSans(c.tentative, size: 12, height: 17, weight: FontWeight.w700),
                 ),
               ),
           ],
         ),
       ),
       actions: <Widget>[
-        TextButton(key: const Key("chg-confirm-back"), onPressed: () => Navigator.of(context).pop(false), child: Text(bi(s, "Retour", "Back"))),
-        FilledButton(key: const Key("chg-confirm"), onPressed: () => Navigator.of(context).pop(true), child: Text(bi(s, "Confirmer et aviser", "Confirm and notify"))),
+        TextButton(style: TextButton.styleFrom(minimumSize: btn, foregroundColor: c.sub), key: const Key("chg-confirm-back"), onPressed: () => Navigator.of(context).pop(false), child: Text(bi(s, "Retour", "Back"))),
+        FilledButton(style: FilledButton.styleFrom(minimumSize: btn), key: const Key("chg-confirm"), onPressed: () => Navigator.of(context).pop(true), child: Text(bi(s, "Confirmer et aviser", "Confirm and notify"))),
       ],
     );
   }
@@ -348,6 +357,8 @@ Future<void> showOrderHistory(BuildContext context, String orderNum) {
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
+    backgroundColor: context.q.surface,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(QuaiRadius.sheet))),
     builder: (_) => OrderHistorySheet(orderNum: orderNum),
   );
 }
@@ -360,6 +371,7 @@ class OrderHistorySheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = StringsScope.of(context);
+    final c = context.q;
     final async = ref.watch(orderChangesProvider(orderNum));
     return SafeArea(
       child: ConstrainedBox(
@@ -370,14 +382,14 @@ class OrderHistorySheet extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(bi(s, "Historique des modifications — ", "Change history — ") + orderNum, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              Text(bi(s, "Historique des modifications — ", "Change history — ") + orderNum, style: quaiSans(c.ink, size: 16, height: 22, weight: FontWeight.w700)),
               const SizedBox(height: 8),
               Flexible(
                 child: async.when(
-                  loading: () => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
-                  error: (e, _) => Text(_errorText(s, e), key: const Key("history-error")),
+                  loading: () => Center(child: Padding(padding: const EdgeInsets.all(24), child: CircularProgressIndicator(color: c.primary))),
+                  error: (e, _) => Text(_errorText(s, e), key: const Key("history-error"), style: quaiSans(c.cancelled, size: 13, height: 18)),
                   data: (groups) {
-                    if (groups.isEmpty) return Text(bi(s, "Aucune modification.", "No changes."), key: const Key("history-empty"));
+                    if (groups.isEmpty) return Text(bi(s, "Aucune modification.", "No changes."), key: const Key("history-empty"), style: quaiSans(c.sub, size: 14, height: 20));
                     return ListView(
                       shrinkWrap: true,
                       children: <Widget>[for (final g in groups) _GroupTile(group: g, french: s.isFrench)],
@@ -400,22 +412,23 @@ class _GroupTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.q;
     return Container(
       key: Key("history-" + group.changeId),
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(border: Border.all(color: const Color(0x22000000)), borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: c.field, border: Border.all(color: c.line), borderRadius: BorderRadius.circular(QuaiRadius.sm)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(group.changedBy + " · " + shortStamp(group.changedAt), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          Text(group.changedBy + " · " + shortStamp(group.changedAt), style: quaiSans(c.ink, size: 13, height: 18, weight: FontWeight.w700)),
           for (final f in group.fields)
             Padding(
               padding: const EdgeInsets.only(top: 3),
-              child: Text(f.label(french: french) + " : " + (f.oldValue.isEmpty ? "—" : f.oldValue) + " → " + (f.newValue.isEmpty ? "—" : f.newValue), style: const TextStyle(fontSize: 13)),
+              child: Text(f.label(french: french) + " : " + (f.oldValue.isEmpty ? "—" : f.oldValue) + " → " + (f.newValue.isEmpty ? "—" : f.newValue), style: quaiSans(c.ink, size: 13, height: 18)),
             ),
           if (group.reason.isNotEmpty)
-            Padding(padding: const EdgeInsets.only(top: 3), child: Text(group.reason, style: const TextStyle(fontSize: 12, color: Colors.black54))),
+            Padding(padding: const EdgeInsets.only(top: 3), child: Text(group.reason, style: quaiSans(c.sub, size: 12, height: 17))),
         ],
       ),
     );

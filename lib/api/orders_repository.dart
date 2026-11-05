@@ -35,14 +35,16 @@ class OrdersLoad {
 /// fetchLinkedOrders in api.ts, minus the parts that need credentials: this
 /// class receives ready-made tokens and never signs in.
 class OrdersRepository {
-  OrdersRepository({required this.api, required this.middleware, DateTime Function()? clock})
+  OrdersRepository(
+      {required this.api, required this.middleware, DateTime Function()? clock})
       : _clock = clock ?? DateTime.now;
 
   final OrdersApi api;
   final MiddlewareSource middleware;
   final DateTime Function() _clock;
 
-  static final RegExp _transferAccounts = RegExp("GOOSENECK", caseSensitive: false);
+  static final RegExp _transferAccounts =
+      RegExp("GOOSENECK", caseSensitive: false);
 
   /// Linked trucks may share one SO (separate events per truck), so identity is
   /// the EVENT when there is one, never the SO number alone.
@@ -75,10 +77,12 @@ class OrdersRepository {
     Future<List<Order>> primary() async {
       if (isLogistique) return <Order>[];
       try {
-        final orders = await api.shipOrders(primaryToken, carrierName: carrierName);
+        final orders =
+            await api.shipOrders(primaryToken, carrierName: carrierName);
         final out = <Order>[...orders];
         if (_transferAccounts.hasMatch(backendName)) {
-          final transfers = await api.transferOrders(primaryToken, carrierName: carrierName);
+          final transfers =
+              await api.transferOrders(primaryToken, carrierName: carrierName);
           rememberTransfers(transfers, primaryToken);
           out.addAll(transfers);
         }
@@ -109,7 +113,9 @@ class OrdersRepository {
         ]);
         rememberTransfers(results[1], token);
         // Each linked truck's jobs belong to that truck's calendar name.
-        return <Order>[...results[0], ...results[1]].map((o) => o.withCarrierName(name)).toList();
+        return <Order>[...results[0], ...results[1]]
+            .map((o) => o.withCarrierName(name))
+            .toList();
       } on UnauthorizedException {
         unauthorized = true;
         failed.add(lt.displayName);
@@ -138,7 +144,8 @@ class OrdersRepository {
       fromMiddleware(),
     ]);
 
-    Order tag(Order o) => o.withCarrierName(calendarName(o.carrierName ?? carrierName));
+    Order tag(Order o) =>
+        o.withCarrierName(calendarName(o.carrierName ?? carrierName));
 
     final merged = <Order>[];
     final seen = <String>{};
@@ -162,7 +169,8 @@ class OrdersRepository {
     }
     // Middleware events duplicate ship-calendar orders, so de-duplicate by SO + date.
     for (final o in results.last) {
-      if (seen.contains(orderKey(o)) || seenSoDate.contains("${o.soNum}|${o.date}")) continue;
+      if (seen.contains(orderKey(o)) ||
+          seenSoDate.contains("${o.soNum}|${o.date}")) continue;
       add(o);
     }
 
@@ -201,7 +209,9 @@ class OrdersRepository {
         for (final t in transfers) {
           if (t.isTransfer) toTokens[t.soNum.toUpperCase()] = token;
         }
-        return <Order>[...ship, ...transfers].map((o) => o.withCarrierName(name)).toList();
+        return <Order>[...ship, ...transfers]
+            .map((o) => o.withCarrierName(name))
+            .toList();
       } on UnauthorizedException {
         unauthorized = true;
         failed.add(a.username);
@@ -219,6 +229,10 @@ class OrdersRepository {
         if (seen.add(orderKey(o))) merged.add(o);
       }
     }
-    return OrdersLoad(orders: merged, toTokens: toTokens, failedTrucks: failed, unauthorized: unauthorized);
+    return OrdersLoad(
+        orders: merged,
+        toTokens: toTokens,
+        failedTrucks: failed,
+        unauthorized: unauthorized);
   }
 }

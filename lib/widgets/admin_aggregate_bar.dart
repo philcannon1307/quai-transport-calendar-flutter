@@ -6,6 +6,7 @@ import "package:flutter_riverpod/flutter_riverpod.dart";
 import "../api/admin_aggregate.dart";
 import "../i18n/i18n.dart";
 import "../state/providers.dart";
+import "../theme/quai_tokens.dart";
 import "bilingual.dart";
 
 /// "Données à jour il y a N min" + Refresh, shown on the Admin screen while the orders come
@@ -26,6 +27,7 @@ class AdminAggregateBar extends ConsumerWidget {
     final agg = ref.watch(adminAggregateProvider).valueOrNull;
     if (agg == null) return const SizedBox.shrink();
     final busy = ref.watch(adminRefreshingProvider) || agg.refreshing;
+    final c = context.q;
     final age = ageText(s, agg.generatedAt, DateTime.now());
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -35,10 +37,11 @@ class AdminAggregateBar extends ConsumerWidget {
             child: Text(
               busy ? "$age · " + bi(s, "mise à jour en cours…", "refreshing…") : age,
               key: const Key("admin-aggregate-age"),
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
+              style: quaiSans(c.sub, size: 12, height: 17, weight: FontWeight.w600),
             ),
           ),
           TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: c.primaryInk, minimumSize: const Size(0, QuaiSpace.tapMin)),
             key: const Key("admin-aggregate-refresh"),
             onPressed: busy ? null : () => unawaited(refreshAdminAggregate(ProviderScope.containerOf(context))),
             icon: const Icon(Icons.refresh, size: 16),

@@ -9,8 +9,8 @@ import "package:quai_calendar/logic/adjustment.dart";
 
 import "fake_backend.dart";
 
-AdjustmentService _svc(FakeBackend b) =>
-    AdjustmentService(gateway: b, clock: () => DateTime(2026, 11, 3, 14, 30), newId: () => "pic");
+AdjustmentService _svc(FakeBackend b) => AdjustmentService(
+    gateway: b, clock: () => DateTime(2026, 11, 3, 14, 30), newId: () => "pic");
 
 const _rows = <AdjustmentRow>[
   AdjustmentRow(item: " Panneau 4x8 ", from: "10", to: "8", reason: "cassés"),
@@ -49,10 +49,12 @@ void main() {
       expect(isGroupeQlAddress(""), isFalse);
     });
 
-    test("every inbox the routing table can return is a groupeql.com address", () {
+    test("every inbox the routing table can return is a groupeql.com address",
+        () {
       for (final c in kCarriers) {
         for (final r in adjustmentRecipients(c.displayName)) {
-          expect(isGroupeQlAddress(r), isTrue, reason: "${c.displayName} -> $r");
+          expect(isGroupeQlAddress(r), isTrue,
+              reason: "${c.displayName} -> $r");
         }
       }
     });
@@ -72,13 +74,16 @@ void main() {
       expect(r.isOk, isTrue);
       expect(b.adjustments.single["id"], "rep-1");
       expect(b.adjustments.single["order_kind"], "SO");
-      expect(b.adjustments.single["transfer_locations"], isNull, reason: "sales orders carry no store list");
+      expect(b.adjustments.single["transfer_locations"], isNull,
+          reason: "sales orders carry no store list");
       expect((b.adjustments.single["items"] as List), hasLength(1));
       expect(b.emails, hasLength(1));
       expect(b.emails.single.template, "order-adjustment");
       expect(b.emails.single.key, "adjustment-rep-1");
-      expect(b.emails.single.data, <String, dynamic>{"reportId": "rep-1", "orderNum": "SO100"},
-          reason: "the client sends ids only; the server computes the recipient");
+      expect(b.emails.single.data,
+          <String, dynamic>{"reportId": "rep-1", "orderNum": "SO100"},
+          reason:
+              "the client sends ids only; the server computes the recipient");
       expect(b.sentMarks, <String>["adjustment:rep-1"]);
     });
 
@@ -96,8 +101,10 @@ void main() {
         transferLocations: locs,
       );
       expect(r.isOk, isTrue);
-      expect(expected, hasLength(2), reason: "local validation still sees both stores");
-      expect(b.emails, hasLength(1), reason: "one server call; the SERVER fans out to both stores");
+      expect(expected, hasLength(2),
+          reason: "local validation still sees both stores");
+      expect(b.emails, hasLength(1),
+          reason: "one server call; the SERVER fans out to both stores");
       expect(b.adjustments.single["transfer_locations"], locs,
           reason: "the server reads the stores from the logged row");
       expect(b.adjustments.single["order_kind"], "TO");
@@ -108,8 +115,12 @@ void main() {
     test("no filled rows: nothing is sent", () async {
       final b = FakeBackend();
       final r = await _svc(b).submit(
-        reportId: "r", orderNum: "SO1", carrierName: "InterQL", reporterName: "x",
-        rows: const <AdjustmentRow>[AdjustmentRow(item: "  ")], note: "",
+        reportId: "r",
+        orderNum: "SO1",
+        carrierName: "InterQL",
+        reporterName: "x",
+        rows: const <AdjustmentRow>[AdjustmentRow(item: "  ")],
+        note: "",
       );
       expect(r.failure, AdjustmentFailure.noItems);
       expect(b.emails, isEmpty);
@@ -119,7 +130,13 @@ void main() {
     test("photo is uploaded first; a failed upload sends no email", () async {
       final b = FakeBackend()..failUpload = true;
       final r = await _svc(b).submit(
-        reportId: "r", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "", photo: _photo(),
+        reportId: "r",
+        orderNum: "SO1",
+        carrierName: "InterQL",
+        reporterName: "x",
+        rows: _rows,
+        note: "",
+        photo: _photo(),
       );
       expect(r.failure, AdjustmentFailure.photoUpload);
       expect(b.emails, isEmpty);
@@ -129,28 +146,52 @@ void main() {
     test("the photo URL travels in the row and the email", () async {
       final b = FakeBackend();
       await _svc(b).submit(
-        reportId: "r", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "", photo: _photo(), photoName: "Ma photo é.png",
+        reportId: "r",
+        orderNum: "SO1",
+        carrierName: "InterQL",
+        reporterName: "x",
+        rows: _rows,
+        note: "",
+        photo: _photo(),
+        photoName: "Ma photo é.png",
       );
       final path = b.uploads.single["path"] as String;
       expect(path, "adjustments/2026-11-03/pic-Ma_photo__.jpg");
       expect(b.adjustments.single["photo_url"], contains(path));
-      expect(b.emails.single.data.containsKey("photoUrl"), isFalse, reason: "the server reads the photo from the logged row");
+      expect(b.emails.single.data.containsKey("photoUrl"), isFalse,
+          reason: "the server reads the photo from the logged row");
     });
 
-    test("RETRY: a 409 on the log row (already logged) still sends the email with the SAME keys", () async {
+    test(
+        "RETRY: a 409 on the log row (already logged) still sends the email with the SAME keys",
+        () async {
       final b = FakeBackend()
         ..failAdjustmentRow = true
         ..adjustmentRowStatus = 409;
-      final r = await _svc(b).submit(reportId: "same", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "");
+      final r = await _svc(b).submit(
+          reportId: "same",
+          orderNum: "SO1",
+          carrierName: "InterQL",
+          reporterName: "x",
+          rows: _rows,
+          note: "");
       expect(r.isOk, isTrue);
       expect(b.emails, hasLength(1));
       expect(b.emails.single.key, contains("same"));
       expect(b.sentMarks, isNotEmpty);
     });
 
-    test("a failed log row (not a duplicate) sends nothing: the server mails from the logged row", () async {
+    test(
+        "a failed log row (not a duplicate) sends nothing: the server mails from the logged row",
+        () async {
       final b = FakeBackend()..failAdjustmentRow = true;
-      final r = await _svc(b).submit(reportId: "x", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "");
+      final r = await _svc(b).submit(
+          reportId: "x",
+          orderNum: "SO1",
+          carrierName: "InterQL",
+          reporterName: "x",
+          rows: _rows,
+          note: "");
       expect(r.failure, AdjustmentFailure.log);
       expect(b.emails, isEmpty);
       expect(b.sentMarks, isEmpty);
@@ -158,21 +199,38 @@ void main() {
 
     test("email failure is reported", () async {
       final b = FakeBackend()..failEmail = true;
-      final r = await _svc(b).submit(reportId: "x", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "");
+      final r = await _svc(b).submit(
+          reportId: "x",
+          orderNum: "SO1",
+          carrierName: "InterQL",
+          reporterName: "x",
+          rows: _rows,
+          note: "");
       expect(r.failure, AdjustmentFailure.email);
     });
 
     test("an unsubscribed recipient is counted, not hidden", () async {
       final b = FakeBackend()..suppressAll = true;
-      final r = await _svc(b).submit(reportId: "x", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "");
+      final r = await _svc(b).submit(
+          reportId: "x",
+          orderNum: "SO1",
+          carrierName: "InterQL",
+          reporterName: "x",
+          rows: _rows,
+          note: "");
       expect(r.isOk, isTrue);
       expect(r.suppressedCount, 1);
       expect(b.sentMarks, isEmpty, reason: "nobody was actually notified");
     });
 
     test("unconfigured backend", () async {
-      final r = await _svc(FakeBackend(isConfigured: false))
-          .submit(reportId: "x", orderNum: "SO1", carrierName: "InterQL", reporterName: "x", rows: _rows, note: "");
+      final r = await _svc(FakeBackend(isConfigured: false)).submit(
+          reportId: "x",
+          orderNum: "SO1",
+          carrierName: "InterQL",
+          reporterName: "x",
+          rows: _rows,
+          note: "");
       expect(r.failure, AdjustmentFailure.notConfigured);
     });
   });

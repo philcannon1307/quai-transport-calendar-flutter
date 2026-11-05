@@ -18,26 +18,48 @@ import "package:quai_calendar/widgets/logistique_tabs.dart";
 
 Strings _strings() {
   final values = <String, String>{};
-  kOriginalKeyToArb.forEach((dotted, arb) => values[arb] = dotted.split(".").last);
+  kOriginalKeyToArb
+      .forEach((dotted, arb) => values[arb] = dotted.split(".").last);
   return Strings.forTests(values);
 }
 
 String _today() => DateTime.now().toIso8601String().substring(0, 10);
 
 final List<Order> _orders = <Order>[
-  Order(kind: OrderKind.order, soNum: "SODELIV", date: _today(), customer: "Client A", serviceType: "Livraison & Installation"),
-  Order(kind: OrderKind.order, soNum: "SOPICK", date: _today(), customer: "Client B", serviceType: "Pick-up"),
-  Order(kind: OrderKind.transfer, soNum: "TO55", date: _today(), customer: "A → B", serviceType: "Transfert / Transfer"),
+  Order(
+      kind: OrderKind.order,
+      soNum: "SODELIV",
+      date: _today(),
+      customer: "Client A",
+      serviceType: "Livraison & Installation"),
+  Order(
+      kind: OrderKind.order,
+      soNum: "SOPICK",
+      date: _today(),
+      customer: "Client B",
+      serviceType: "Pick-up"),
+  Order(
+      kind: OrderKind.transfer,
+      soNum: "TO55",
+      date: _today(),
+      customer: "A → B",
+      serviceType: "Transfert / Transfer"),
 ];
 
-Widget _host({String? carrier, OrdersLoad load = const OrdersLoad(), List<Override> extra = const <Override>[]}) => ProviderScope(
+Widget _host(
+        {String? carrier,
+        OrdersLoad load = const OrdersLoad(),
+        List<Override> extra = const <Override>[]}) =>
+    ProviderScope(
       overrides: <Override>[
         ordersProvider.overrideWith((ref) async => _orders),
         ordersLoadProvider.overrideWith((ref) async => load),
         currentCarrierProvider.overrideWith((ref) => carrier),
         ...extra,
       ],
-      child: StringsScope(strings: _strings(), child: const MaterialApp(home: CalendarScreen())),
+      child: StringsScope(
+          strings: _strings(),
+          child: const MaterialApp(home: CalendarScreen())),
     );
 
 void _tall(WidgetTester tester) {
@@ -63,12 +85,17 @@ void main() {
       _tall(tester);
       await tester.pumpWidget(_host(carrier: kLogistique));
       await _settle(tester);
-      expect(find.text("delivInst (1)"), findsOneWidget);
-      expect(find.text("pickups (1)"), findsOneWidget);
-      expect(find.text("transfers (1)"), findsOneWidget);
+      for (final k in <String>["delivInst", "pickups", "transfers"]) {
+        final tab = find.byKey(Key("tab-$k"));
+        expect(tab, findsOneWidget);
+        expect(
+            find.descendant(of: tab, matching: find.text("1")), findsOneWidget,
+            reason: "count of $k");
+      }
     });
 
-    testWidgets("opens on Deliveries & Installations and shows only those", (tester) async {
+    testWidgets("opens on Deliveries & Installations and shows only those",
+        (tester) async {
       _tall(tester);
       await tester.pumpWidget(_host(carrier: kLogistique));
       await _settle(tester);
@@ -77,35 +104,41 @@ void main() {
       expect(find.text("TO55"), findsNothing);
     });
 
-    testWidgets("switching to Pick-ups and TOs filters the cards", (tester) async {
+    testWidgets("switching to Pick-ups and TOs filters the cards",
+        (tester) async {
       _tall(tester);
       await tester.pumpWidget(_host(carrier: kLogistique));
       await _settle(tester);
 
-      await tester.tap(find.text("pickups (1)"));
+      await tester.tap(find.byKey(const Key("tab-pickups")));
       await _settle(tester);
       expect(find.text("SOPICK"), findsOneWidget);
       expect(find.text("SODELIV"), findsNothing);
 
-      await tester.tap(find.text("transfers (1)"));
+      await tester.tap(find.byKey(const Key("tab-transfers")));
       await _settle(tester);
       expect(find.text("TO55"), findsOneWidget);
       expect(find.text("SOPICK"), findsNothing);
     });
 
-    testWidgets("says pick-ups are unavailable on that tab when the middleware is not configured", (tester) async {
+    testWidgets(
+        "says pick-ups are unavailable on that tab when the middleware is not configured",
+        (tester) async {
       _tall(tester);
-      await tester.pumpWidget(_host(carrier: kLogistique, load: const OrdersLoad(middlewareUnavailable: true)));
+      await tester.pumpWidget(_host(
+          carrier: kLogistique,
+          load: const OrdersLoad(middlewareUnavailable: true)));
       await _settle(tester);
       expect(find.textContaining("Ramassages indisponibles"), findsNothing);
-      await tester.tap(find.text("pickups (1)"));
+      await tester.tap(find.byKey(const Key("tab-pickups")));
       await _settle(tester);
       expect(find.textContaining("Ramassages indisponibles"), findsOneWidget);
     });
   });
 
   group("everyone else", () {
-    testWidgets("a normal carrier has no tabs and sees every card", (tester) async {
+    testWidgets("a normal carrier has no tabs and sees every card",
+        (tester) async {
       _tall(tester);
       await tester.pumpWidget(_host(carrier: "Gat - Sam"));
       await _settle(tester);
@@ -115,9 +148,12 @@ void main() {
       expect(find.text("TO55"), findsOneWidget);
     });
 
-    testWidgets("the pick-up warning never appears for a normal carrier", (tester) async {
+    testWidgets("the pick-up warning never appears for a normal carrier",
+        (tester) async {
       _tall(tester);
-      await tester.pumpWidget(_host(carrier: "Gat - Sam", load: const OrdersLoad(middlewareUnavailable: true)));
+      await tester.pumpWidget(_host(
+          carrier: "Gat - Sam",
+          load: const OrdersLoad(middlewareUnavailable: true)));
       await _settle(tester);
       expect(find.textContaining("Ramassages indisponibles"), findsNothing);
     });
@@ -126,34 +162,44 @@ void main() {
   group("banners", () {
     testWidgets("names the trucks that could not be loaded", (tester) async {
       _tall(tester);
-      await tester.pumpWidget(_host(carrier: "InterQL", load: const OrdersLoad(failedTrucks: <String>["OPEN GOOSENECK"])));
+      await tester.pumpWidget(_host(
+          carrier: "InterQL",
+          load: const OrdersLoad(failedTrucks: <String>["OPEN GOOSENECK"])));
       await _settle(tester);
       expect(find.textContaining("OPEN GOOSENECK"), findsOneWidget);
     });
 
-    testWidgets("a rejected token asks the user to sign in again", (tester) async {
+    testWidgets("a rejected token asks the user to sign in again",
+        (tester) async {
       _tall(tester);
-      await tester.pumpWidget(_host(carrier: "InterQL", load: const OrdersLoad(unauthorized: true)));
+      await tester.pumpWidget(_host(
+          carrier: "InterQL", load: const OrdersLoad(unauthorized: true)));
       await _settle(tester);
       expect(find.textContaining("Session expirée"), findsOneWidget);
     });
   });
 
-  testWidgets("tapping a card opens that order's picking ticket", (tester) async {
+  testWidgets("tapping a card opens that order's picking ticket",
+      (tester) async {
     _tall(tester);
     final stuck = TicketService(
       // A future that never completes: no timer left pending when the test ends.
-      fetch: (String? t, String n, {void Function(double? fraction)? onDownload}) => Completer<TicketHttpResult>().future,
+      fetch: (String? t, String n,
+              {void Function(double? fraction)? onDownload}) =>
+          Completer<TicketHttpResult>().future,
       tokens: _NoTokens(),
     );
-    await tester.pumpWidget(_host(carrier: "Gat - Sam", extra: <Override>[ticketServiceProvider.overrideWithValue(stuck)]));
+    await tester.pumpWidget(_host(
+        carrier: "Gat - Sam",
+        extra: <Override>[ticketServiceProvider.overrideWithValue(stuck)]));
     await _settle(tester);
     await tester.tap(find.byKey(const Key("card-SODELIV")));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(TicketSheet), findsOneWidget);
     expect(find.byKey(const Key("ticket-title")), findsOneWidget);
-    expect(tester.widget<Text>(find.byKey(const Key("ticket-title"))).data, "SODELIV");
+    expect(tester.widget<Text>(find.byKey(const Key("ticket-title"))).data,
+        "SODELIV");
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -30,13 +30,15 @@ class FakeBackend implements BackendGateway {
   final List<Map<String, dynamic>> receipts = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> adjustments = <Map<String, dynamic>>[];
   final List<String> sentMarks = <String>[];
-  final List<List<Map<String, dynamic>>> historyUpserts = <List<Map<String, dynamic>>>[];
+  final List<List<Map<String, dynamic>>> historyUpserts =
+      <List<Map<String, dynamic>>>[];
   List<Map<String, dynamic>> historyToReturn = <Map<String, dynamic>>[];
   final List<Map<String, String>> historyQueries = <Map<String, String>>[];
   final List<String> removed = <String>[];
   final List<String> deletedImageUrls = <String>[];
   final List<String> deletedAnnouncements = <String>[];
-  final List<Map<String, String>> insertedAnnouncements = <Map<String, String>>[];
+  final List<Map<String, String>> insertedAnnouncements =
+      <Map<String, String>>[];
   final List<String> insertedImages = <String>[];
   UnsubscribeCheck checkResult = UnsubscribeCheck.valid;
   UnsubscribeResult confirmResult = UnsubscribeResult.done;
@@ -55,14 +57,19 @@ class FakeBackend implements BackendGateway {
   @override
   Future<void> updateAnnouncement(String id, Map<String, String> row) async {}
   @override
-  Future<void> deleteAnnouncement(String id) async => deletedAnnouncements.add(id);
+  Future<void> deleteAnnouncement(String id) async =>
+      deletedAnnouncements.add(id);
   @override
-  Future<void> insertAnnouncementImage(String announcementId, String url) async => insertedImages.add(url);
+  Future<void> insertAnnouncementImage(
+          String announcementId, String url) async =>
+      insertedImages.add(url);
   @override
-  Future<void> deleteAnnouncementImageByUrl(String url) async => deletedImageUrls.add(url);
+  Future<void> deleteAnnouncementImageByUrl(String url) async =>
+      deletedImageUrls.add(url);
 
   @override
-  String publicUrl(String bucket, String path) => "https://x.test/storage/v1/object/public/$bucket/$path";
+  String publicUrl(String bucket, String path) =>
+      "https://x.test/storage/v1/object/public/$bucket/$path";
 
   @override
   Future<String> uploadFile({
@@ -72,7 +79,12 @@ class FakeBackend implements BackendGateway {
     required String contentType,
   }) async {
     if (failUpload) throw const BackendException(500, "upload failed");
-    uploads.add(<String, dynamic>{"bucket": bucket, "path": path, "bytes": bytes.length, "type": contentType});
+    uploads.add(<String, dynamic>{
+      "bucket": bucket,
+      "path": path,
+      "bytes": bytes.length,
+      "type": contentType
+    });
     return publicUrl(bucket, path);
   }
 
@@ -90,16 +102,19 @@ class FakeBackend implements BackendGateway {
   }
 
   @override
-  Future<void> markReceiptEmailSent(String id) async => sentMarks.add("receipt:$id");
+  Future<void> markReceiptEmailSent(String id) async =>
+      sentMarks.add("receipt:$id");
 
   @override
   Future<void> insertAdjustment(Map<String, dynamic> row) async {
-    if (failAdjustmentRow) throw BackendException(adjustmentRowStatus, "row failed");
+    if (failAdjustmentRow)
+      throw BackendException(adjustmentRowStatus, "row failed");
     adjustments.add(row);
   }
 
   @override
-  Future<void> markAdjustmentEmailSent(String id) async => sentMarks.add("adjustment:$id");
+  Future<void> markAdjustmentEmailSent(String id) async =>
+      sentMarks.add("adjustment:$id");
 
   @override
   Future<EmailOutcome> sendEmail({
@@ -114,7 +129,8 @@ class FakeBackend implements BackendGateway {
   }
 
   @override
-  Future<void> upsertHistory(List<Map<String, dynamic>> rows) async => historyUpserts.add(rows);
+  Future<void> upsertHistory(List<Map<String, dynamic>> rows) async =>
+      historyUpserts.add(rows);
 
   @override
   Future<List<Map<String, dynamic>>> historyRows({
@@ -123,12 +139,17 @@ class FakeBackend implements BackendGateway {
     List<String>? carrierNames,
     List<int>? carrierIds,
   }) async {
-    historyQueries.add(<String, String>{"from": from, "to": to, "names": (carrierNames ?? <String>[]).join("|")});
+    historyQueries.add(<String, String>{
+      "from": from,
+      "to": to,
+      "names": (carrierNames ?? <String>[]).join("|")
+    });
     return historyToReturn;
   }
 
   @override
   Future<UnsubscribeCheck> checkUnsubscribe(String token) async => checkResult;
   @override
-  Future<UnsubscribeResult> confirmUnsubscribe(String token) async => confirmResult;
+  Future<UnsubscribeResult> confirmUnsubscribe(String token) async =>
+      confirmResult;
 }

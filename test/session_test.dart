@@ -2,7 +2,8 @@ import "package:flutter_test/flutter_test.dart";
 import "package:quai_calendar/api/session.dart";
 
 void main() {
-  test("switching calendars clears the previous carrier's cached linked data", () {
+  test("switching calendars clears the previous carrier's cached linked data",
+      () {
     final store = MemorySessionStore()
       ..write(kLinkedKey, "old linked orders")
       ..write(kLinkedCredsKey, "old linked credentials")
@@ -17,7 +18,10 @@ void main() {
 
   test("linked-truck tokens are stored and read back", () {
     final session = Session(MemorySessionStore());
-    session.signIn(token: "t", name: "InterQL", linkedTokens: <String, String>{"OPEN GOOSENECK": "t4"});
+    session.signIn(
+        token: "t",
+        name: "InterQL",
+        linkedTokens: <String, String>{"OPEN GOOSENECK": "t4"});
     expect(session.linkedTokens(), <String, String>{"OPEN GOOSENECK": "t4"});
   });
 
@@ -30,7 +34,10 @@ void main() {
 
   test("a second sign-in does not inherit the first one's linked tokens", () {
     final session = Session(MemorySessionStore());
-    session.signIn(token: "t", name: "InterQL", linkedTokens: <String, String>{"OPEN GOOSENECK": "t4"});
+    session.signIn(
+        token: "t",
+        name: "InterQL",
+        linkedTokens: <String, String>{"OPEN GOOSENECK": "t4"});
     session.signIn(token: "u", name: "Gat - Sam");
     expect(session.linkedTokens(), isEmpty);
   });

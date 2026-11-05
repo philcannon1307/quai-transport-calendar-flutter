@@ -11,18 +11,22 @@ import "package:quai_calendar/widgets/contact_links.dart";
 
 Strings _strings() {
   final values = <String, String>{};
-  kOriginalKeyToArb.forEach((dotted, arb) => values[arb] = dotted.split(".").last);
+  kOriginalKeyToArb
+      .forEach((dotted, arb) => values[arb] = dotted.split(".").last);
   return Strings.forTests(values);
 }
 
-Widget _host(Future<OrderContact?> Function(String so) load, List<Uri> launched) => ProviderScope(
+Widget _host(
+        Future<OrderContact?> Function(String so) load, List<Uri> launched) =>
+    ProviderScope(
       overrides: <Override>[
         orderContactProvider.overrideWith((ref, so) => load(so)),
         urlLauncherProvider.overrideWithValue((uri) async => launched.add(uri)),
       ],
       child: StringsScope(
         strings: _strings(),
-        child: const MaterialApp(home: Scaffold(body: ContactLinks(soNum: "SO1"))),
+        child:
+            const MaterialApp(home: Scaffold(body: ContactLinks(soNum: "SO1"))),
       ),
     );
 
@@ -33,7 +37,10 @@ Future<void> _settle(WidgetTester tester) async {
 
 void main() {
   testWidgets("shows Call and Directions when both are known", (tester) async {
-    await tester.pumpWidget(_host((so) async => const OrderContact(phone: "819-555-0142", address: "1 rue A, Mirabel"), <Uri>[]));
+    await tester.pumpWidget(_host(
+        (so) async => const OrderContact(
+            phone: "819-555-0142", address: "1 rue A, Mirabel"),
+        <Uri>[]));
     await _settle(tester);
     expect(find.byKey(const Key("call-SO1")), findsOneWidget);
     expect(find.byKey(const Key("maps-SO1")), findsOneWidget);
@@ -43,25 +50,33 @@ void main() {
 
   testWidgets("Call dials the number with a clean tel: link", (tester) async {
     final launched = <Uri>[];
-    await tester.pumpWidget(_host((so) async => const OrderContact(phone: "(819) 555-0142"), launched));
+    await tester.pumpWidget(_host(
+        (so) async => const OrderContact(phone: "(819) 555-0142"), launched));
     await _settle(tester);
     await tester.tap(find.byKey(const Key("call-SO1")));
     await tester.pump();
     expect(launched.single.toString(), "tel:8195550142");
   });
 
-  testWidgets("Directions opens Google Maps with the encoded address", (tester) async {
+  testWidgets("Directions opens Google Maps with the encoded address",
+      (tester) async {
     final launched = <Uri>[];
-    await tester.pumpWidget(_host((so) async => const OrderContact(address: "1 rue A, Mirabel"), launched));
+    await tester.pumpWidget(_host(
+        (so) async => const OrderContact(address: "1 rue A, Mirabel"),
+        launched));
     await _settle(tester);
     await tester.tap(find.byKey(const Key("maps-SO1")));
     await tester.pump();
-    expect(launched.single.toString(), startsWith("https://www.google.com/maps/dir/?api=1&destination="));
+    expect(launched.single.toString(),
+        startsWith("https://www.google.com/maps/dir/?api=1&destination="));
     expect(launched.single.toString(), contains("1%20rue%20A"));
   });
 
-  testWidgets("a phone with no address shows only Call (no dead Directions button)", (tester) async {
-    await tester.pumpWidget(_host((so) async => const OrderContact(phone: "819-555-0142"), <Uri>[]));
+  testWidgets(
+      "a phone with no address shows only Call (no dead Directions button)",
+      (tester) async {
+    await tester.pumpWidget(_host(
+        (so) async => const OrderContact(phone: "819-555-0142"), <Uri>[]));
     await _settle(tester);
     expect(find.byKey(const Key("call-SO1")), findsOneWidget);
     expect(find.byKey(const Key("maps-SO1")), findsNothing);
@@ -74,13 +89,16 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  testWidgets("a lookup error renders nothing instead of an error box", (tester) async {
-    await tester.pumpWidget(_host((so) async => throw StateError("boom"), <Uri>[]));
+  testWidgets("a lookup error renders nothing instead of an error box",
+      (tester) async {
+    await tester
+        .pumpWidget(_host((so) async => throw StateError("boom"), <Uri>[]));
     await _settle(tester);
     expect(find.byType(OutlinedButton), findsNothing);
   });
 
-  testWidgets("a small spinner shows while the contact is being read", (tester) async {
+  testWidgets("a small spinner shows while the contact is being read",
+      (tester) async {
     final gate = Completer<OrderContact?>();
     await tester.pumpWidget(_host((so) => gate.future, <Uri>[]));
     await tester.pump();

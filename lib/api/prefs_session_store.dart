@@ -26,7 +26,8 @@ class PrefsSessionStore implements SessionStore {
   }
 
   @override
-  void write(String key, String value) => unawaited(_prefs.setString(key, value));
+  void write(String key, String value) =>
+      unawaited(_prefs.setString(key, value));
 
   @override
   void remove(String key) => unawaited(_prefs.remove(key));

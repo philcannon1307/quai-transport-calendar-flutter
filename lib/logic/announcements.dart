@@ -21,10 +21,14 @@ class Announcement {
   final DateTime? createdAt;
   final List<String> images;
 
-  String titleFor({required bool french}) => french && titleFr.isNotEmpty ? titleFr : title;
-  String bodyFor({required bool french}) => french && bodyFr.isNotEmpty ? bodyFr : body;
+  String titleFor({required bool french}) =>
+      french && titleFr.isNotEmpty ? titleFr : title;
+  String bodyFor({required bool french}) =>
+      french && bodyFr.isNotEmpty ? bodyFr : body;
 
-  factory Announcement.fromRow(Map<String, dynamic> row, {List<String> images = const <String>[]}) => Announcement(
+  factory Announcement.fromRow(Map<String, dynamic> row,
+          {List<String> images = const <String>[]}) =>
+      Announcement(
         id: (row["id"] ?? "").toString(),
         title: (row["title"] ?? "").toString(),
         body: (row["body"] ?? "").toString(),
@@ -38,7 +42,11 @@ class Announcement {
 
 /// What the editor submits.
 class AnnouncementDraft {
-  const AnnouncementDraft({required this.title, required this.body, this.titleFr = "", this.bodyFr = ""});
+  const AnnouncementDraft(
+      {required this.title,
+      required this.body,
+      this.titleFr = "",
+      this.bodyFr = ""});
   final String title;
   final String body;
   final String titleFr;
@@ -70,7 +78,8 @@ String? storagePathFromUrl(String url, String bucket) {
   } catch (_) {
     return null;
   }
-  final m = RegExp("/object/public/${RegExp.escape(bucket)}/(.+)").firstMatch(uri.path);
+  final m = RegExp("/object/public/${RegExp.escape(bucket)}/(.+)")
+      .firstMatch(uri.path);
   if (m == null) return null;
   final raw = m.group(1)!;
   try {
