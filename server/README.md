@@ -123,3 +123,14 @@ Pictures are stored in Postgres (table `files`), so one database backup covers e
 * **Heads-up (inherited behaviour):** unsubscribing `sadm@` or `comptabilite@` silences that inbox for everyone who relies on it. Sessions cannot be revoked before they expire (12 h by default): rotate `SESSION_JWT_SECRET` to end all sessions at once.
 * **Postgres TLS** is verified by default (see `.env.example`). `DATA_STORE=memory` is refused in production.
 * **Exports.** `export/`, `export-*/` are git-ignored: they hold personal data, unsubscribe tokens and receipts.
+
+## Order change notice
+
+A change to a picking ticket is stored as an overlay in Postgres (`order_changes`; the job service / NetSuite have no write endpoint), shown in the app as a "Changed" badge + history, and e-mailed. Routes (session required): `POST /orders/:num/changes`, `POST /orders/:num/changes/preview`, `GET /orders/:num/changes`, `GET /orders/changed?nums=SO1,TO2`, `GET|PUT /orders/division-contacts` (SuperUser).
+
+Migration (NOT applied automatically; owner approval first): `DATABASE_URL=… node scripts/db-schema.js --dry-run`, or run `db/migrations/2026-11-05-order-changes.sql` (idempotent, creates `order_changes` and `division_contacts`).
+
+Variables (all optional):
+* `TEST_RECIPIENT_OVERRIDE` — **defaults ON to communication@groupeql.com**: every notice goes there (subject starts with [TEST], the body lists who would have been mailed). Set it to `off` to send to the real divisions, carrier and dispatcher. Only @groupeql.com is accepted.
+* `DISPATCHER_EMAIL` — dispatcher/logistics mailbox, default sadm@groupeql.com.
+* `ORDER_CHANGE_ROLES` — who may post changes, default `carrier,logistique,superuser`.

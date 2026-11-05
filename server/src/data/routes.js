@@ -10,18 +10,19 @@ import { UploadQuota } from "./quota.js";
 import { encodePath, isUuid, sessionFromToken, sessionTokenFrom } from "./guard.js";
 import { HttpError, MAX_JSON_BYTES, MAX_UPLOAD_BYTES, run, upload } from "./handler.js";
 import { handleUnsubscribe, sendTransactional } from "./email.js";
+import { createOrderChanges, orderChangeSettings, validateOrderNum } from "./orderChanges.js";
 
 const PUBLIC_BUCKETS = new Set(["announcement-images", "receipts"]);
 // CORS: data routes answer only the origins on ALLOWED_ORIGINS (the same list as the exchange). The only
 // wildcard is for public pictures (GET /storage/...), which are public by design. Auth is a bearer token.
 const CORS_COMMON = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-quai-session, x-supabase-api-version",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
   "Access-Control-Max-Age": "600",
 };
 
 export function isDataPath(path) {
-  return path.startsWith("/functions/v1/") || path.startsWith("/rest/v1/") || path.startsWith("/storage/v1/object/public/");
+  return path.startsWith("/functions/v1/") || path.startsWith("/orders/") || path.startsWith("/rest/v1/") || path.startsWith("/storage/v1/object/public/");
 }
 
 function readBytes(req, max) {
@@ -63,6 +64,15 @@ export function createDataApi({ config, store, provider, now = Date.now, log = (
     } catch { /* an alarm check never fails an upload */ }
   }
   const allowedOrigins = config.allowedOrigins ?? new Set();
+  const ocSettings = config.data?.orderChanges ?? orderChangeSettings({}).settings;
+  const changeLimiter = new RateLimiter({ max: 20, windowMs: 10 * 60_000, now });
+  const orderChanges = createOrderChanges({
+    store, settings: ocSettings, now, log,
+    sendEmail: (changeId, s) => sendTransactional({
+      body: { templateName: "order-change", idempotencyKey: "order-change:" + changeId, templateData: { changeId } },
+      session: s, store, provider, baseUrl, from: config.data.emailFrom, publicSiteUrl: config.data.publicSiteUrl,
+    }),
+  });
 
   function send(res, status, body, extra = {}) {
     res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extra });
@@ -137,6 +147,34 @@ export function createDataApi({ config, store, provider, now = Date.now, log = (
         }
         const out = await handleUnsubscribe({ method: req.method, token, store });
         return reply(out.status, out.body);
+      }
+
+      // ---- order change notice (signed-in users)
+      if (path.startsWith("/orders/")) {
+        const s = session(req);
+        const parts = path.split("/").filter(Boolean); // ["orders", X, ...]
+        if (parts[1] === "division-contacts" && parts.length === 2) {
+          if (req.method === "GET") return reply(200, await orderChanges.listContacts(s));
+          if (req.method === "PUT") return reply(200, await orderChanges.putContact(await readJson(req), s));
+          throw new HttpError(405, "method_not_allowed");
+        }
+        if (parts[1] === "changed" && parts.length === 2) {
+          if (req.method !== "GET") throw new HttpError(405, "method_not_allowed");
+          return reply(200, await orderChanges.changedSummary(url.searchParams.get("nums")));
+        }
+        if (parts.length >= 3 && parts[2] === "changes") {
+          const num = validateOrderNum(decodeURIComponent(parts[1]));
+          if (parts.length === 3 && req.method === "GET") return reply(200, await orderChanges.history(num));
+          if (parts.length === 3 && req.method === "POST") {
+            const wait = changeLimiter.hit(s.carrier);
+            if (wait > 0) return reply(429, { error: "too_many_changes", retryAfter: wait }, { "Retry-After": String(wait) });
+            const out = await orderChanges.create(num, await readJson(req), s);
+            return reply(out.status, out.body);
+          }
+          if (parts.length === 4 && parts[3] === "preview" && req.method === "POST") return reply(200, await orderChanges.preview(num, await readJson(req), s));
+          throw new HttpError(405, "method_not_allowed");
+        }
+        throw new HttpError(404, "not_found");
       }
 
       // ---- everything below needs a signed-in app user
