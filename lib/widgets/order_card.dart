@@ -2,6 +2,9 @@ import "package:flutter/material.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
 
 import "../i18n/i18n.dart";
+import "../logic/map_embed.dart";
+import "../platform/map_frame.dart";
+import "../state/providers.dart";
 import "../logic/calendar_week.dart";
 import "../models/order.dart";
 import "../screens/order_detail_screen.dart";
@@ -187,6 +190,8 @@ class OrderCard extends ConsumerWidget {
               Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: <Widget>[Expanded(child: tag), actions]),
+            if (!dense && !cancelled && !order.isTransfer)
+              OrderCardMap(order: order),
           ]),
     );
 
@@ -254,4 +259,43 @@ class _RoundAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) => RoundIconButton(
       key: buttonKey, tooltip: tooltip, icon: icon, onTap: onTap, small: small);
+}
+
+/// Map embedded in the (full-width) card: the delivery address as a pin, ~150 px, rounded, lazy-loaded.
+/// Static on purpose: it never captures touches, so scrolling and tapping the card (open the order) keep working.
+/// No usable address -> nothing is drawn (no blank gap).
+class OrderCardMap extends ConsumerWidget {
+  const OrderCardMap({super.key, required this.order});
+  final Order order;
+
+  static const double height = 150;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final contact = ref.watch(orderContactProvider(order.soNum)).valueOrNull;
+    var address = contact?.address;
+    if (mapQueryFor(address) == null && (order.soId ?? 0) > 0) {
+      final d = ref.watch(salesOrderDetailsProvider(order.soId!)).valueOrNull;
+      final joined = <String?>[d?.address, d?.city]
+          .where((v) => (v ?? "").trim().isNotEmpty)
+          .join(", ");
+      address = joined;
+    }
+    final query = mapQueryFor(address);
+    if (query == null) return const SizedBox.shrink();
+    final c = context.q;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        key: Key("card-map-${order.soNum}"),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+            color: c.field,
+            borderRadius: BorderRadius.circular(QuaiRadius.md),
+            border: Border.all(color: c.line)),
+        child: buildMapFrame(mapEmbedUrl(query), height,
+            tapHint: "", lockLabel: "", interactive: false),
+      ),
+    );
+  }
 }

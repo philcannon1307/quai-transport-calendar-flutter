@@ -9,18 +9,27 @@ final Map<String, html.IFrameElement> _frames = <String, html.IFrameElement>{};
 
 String _viewType(String url) => "quai-map-${url.hashCode}";
 
+// A static (card) map never takes pointer events: touches reach Flutter, so the card still scrolls and opens the order.
+
 /// Google Maps iframe. It starts NON-interactive (pointer-events: none) so a finger on the map still scrolls the page;
 /// one tap on the "Touchez pour interagir" overlay unlocks it, the lock chip locks it again.
 Widget buildMapFrame(String url, double height,
-        {required String tapHint, required String lockLabel}) =>
-    _MapFrame(url: url, height: height, tapHint: tapHint, lockLabel: lockLabel);
+        {required String tapHint, required String lockLabel, bool interactive = true}) =>
+    _MapFrame(
+        url: url,
+        height: height,
+        tapHint: tapHint,
+        lockLabel: lockLabel,
+        interactive: interactive);
 
 class _MapFrame extends StatefulWidget {
   const _MapFrame(
       {required this.url,
       required this.height,
       required this.tapHint,
-      required this.lockLabel});
+      required this.lockLabel,
+      this.interactive = true});
+  final bool interactive;
   final String url;
   final double height;
   final String tapHint;
@@ -66,7 +75,9 @@ class _MapFrameState extends State<_MapFrame> {
       height: widget.height,
       child: Stack(fit: StackFit.expand, children: <Widget>[
         HtmlElementView(viewType: _viewType(widget.url)),
-        if (!_active)
+        if (!widget.interactive)
+          const SizedBox.shrink()
+        else if (!_active)
           Positioned.fill(
             child: GestureDetector(
               key: const Key("map-tap-overlay"),
