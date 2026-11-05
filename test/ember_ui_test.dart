@@ -143,7 +143,8 @@ void main() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day, 12);
     await t.pumpWidget(_host(const CalendarScreen(), <Order>[
-      _o("SO1", today, status: "CONFIRMED", service: "Livraison", customer: "Un Client"),
+      _o("SO1", today,
+          status: "CONFIRMED", service: "Livraison", customer: "Un Client"),
       _o("SO2", today,
           status: "TENTATIVE", service: "Installation", customer: "Deux"),
       _o("SO3", today.add(const Duration(days: 1)), customer: "Demain"),
@@ -165,6 +166,59 @@ void main() {
         QuaiColors.light.delivery);
     expect(find.byKey(Key("strip-${today.day}")), findsOneWidget);
   });
+
+  for (final w in <double>[360, 390, 430]) {
+    for (final n in <int>[0, 1, 3]) {
+      testWidgets(
+          "phone strip ($w, ${n} dots): selected pill and every day are centred in their column",
+          (t) async {
+        _size(t, w, 844);
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day, 12);
+        await t.pumpWidget(_host(const CalendarScreen(), <Order>[
+          for (var i = 0; i < n; i++)
+            _o("SO$i", today, service: "Livraison", customer: "C$i"),
+        ]));
+        await _settle(t);
+        expect(t.takeException(), isNull);
+        final strips = find.byWidgetPredicate((wd) =>
+            wd.key is ValueKey<String> &&
+            RegExp(r"^strip-\d+$")
+                .hasMatch((wd.key as ValueKey<String>).value));
+        expect(strips, findsNWidgets(7));
+        final sel = find.byKey(Key("strip-${today.day}"));
+        final height = t.getSize(sel).height;
+        final width = t.getSize(sel).width;
+        for (var i = 0; i < 7; i++) {
+          final cell = strips.at(i);
+          expect(t.getSize(cell).height, height,
+              reason: "same height, no jump");
+          expect((t.getSize(cell).width - width).abs() < 0.01, isTrue,
+              reason: "same width");
+          final cx = t.getCenter(cell).dx;
+          for (final txt in find
+              .descendant(of: cell, matching: find.byType(Text))
+              .evaluate()) {
+            expect((t.getCenter(find.byWidget(txt.widget)).dx - cx).abs() < 0.6,
+                isTrue,
+                reason: "label/number centred in column $i at $w");
+          }
+          final rows = find.descendant(of: cell, matching: find.byType(Row));
+          if (rows.evaluate().isNotEmpty) {
+            expect((t.getCenter(rows.first).dx - cx).abs() < 0.6, isTrue,
+                reason: "dots centred in column $i at $w");
+          }
+        }
+        // the pill does not overlap its neighbours
+        for (var i = 0; i < 6; i++) {
+          expect(
+              t.getTopRight(strips.at(i)).dx <=
+                  t.getTopLeft(strips.at(i + 1)).dx + 0.01,
+              isTrue);
+        }
+      });
+    }
+  }
 
   testWidgets("phone: tapping another day in the strip switches the agenda",
       (t) async {
