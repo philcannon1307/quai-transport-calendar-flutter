@@ -36,6 +36,15 @@ class FakeTransport implements OrderChangeTransport {
     "testMode": true,
     "unresolved": <String>[],
   };
+  Map<String, dynamic> maskedPreview = <String, dynamic>{
+    "recipients": <Map<String, dynamic>>[
+      <String, dynamic>{"roles": <String>["creator"], "division": "lindsay"},
+      <String, dynamic>{"roles": <String>["dispatcher"]},
+    ],
+    "deliveredTo": <String>[],
+    "testMode": true,
+    "unresolved": <String>[],
+  };
   Map<String, dynamic> submitJson = <String, dynamic>{"changeId": "c1", "emailStatus": "test_override", "testMode": true};
   Map<String, dynamic> historyJson = <String, dynamic>{"changes": <Map<String, dynamic>>[]};
   Map<String, dynamic> changedJson = <String, dynamic>{"changed": <String, dynamic>{}};
@@ -229,6 +238,21 @@ void main() {
       expect(find.byType(SnackBar), findsOneWidget);
     });
 
+    testWidgets("a carrier's confirmation lists roles and divisions only (the server hides mailboxes)", (tester) async {
+      final t = FakeTransport();
+      t.previewJson = t.maskedPreview;
+      await tester.pumpWidget(_host(t, _launcher(_so)));
+      await tester.tap(find.byKey(const Key("open")));
+      await _settle(tester);
+      await tester.enterText(find.byKey(const Key("chg-field-memo")), "x");
+      await tester.ensureVisible(find.byKey(const Key("chg-continue")));
+      await tester.tap(find.byKey(const Key("chg-continue")));
+      await _settle(tester);
+      expect(find.byKey(const Key("chg-recipient-creator")), findsOneWidget);
+      expect(find.textContaining("@groupeql.com"), findsNothing);
+      expect(find.textContaining("lindsay — Division créatrice"), findsOneWidget);
+    });
+
     testWidgets("going back from the confirmation saves nothing", (tester) async {
       final t = FakeTransport();
       await tester.pumpWidget(_host(t, _launcher(_so)));
@@ -259,7 +283,7 @@ void main() {
       await tester.tap(find.byKey(const Key("chg-confirm")));
       await _settle(tester);
       expect(find.byKey(const Key("chg-error")), findsOneWidget);
-      expect(find.textContaining("pas le droit"), findsOneWidget);
+      expect(find.textContaining("pas la vôtre"), findsOneWidget);
     });
 
     testWidgets("preview failure keeps the form open with a message", (tester) async {

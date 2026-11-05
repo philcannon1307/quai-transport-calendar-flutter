@@ -64,7 +64,7 @@ String _errorText(Strings s, Object e) {
     case "session":
       return bi(s, "Session expirée — reconnectez-vous.", "Session expired — sign in again.");
     case "forbidden":
-      return bi(s, "Vous n'avez pas le droit de modifier cette commande.", "You are not allowed to change this order.");
+      return bi(s, "Cette commande n'est pas la vôtre : vous ne pouvez pas la modifier.", "This is not your order: you cannot change it.");
     case "too_many":
       return bi(s, "Trop de modifications. Réessayez dans quelques minutes.", "Too many changes. Try again in a few minutes.");
     case "invalid":
@@ -304,7 +304,11 @@ class ConfirmChangeDialog extends StatelessWidget {
             for (final r in preview.recipients)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text(r.email + " — " + r.roles.map((x) => roleLabel(x, french: fr)).join(", "), key: Key("chg-recipient-" + r.email), style: const TextStyle(fontSize: 13)),
+                child: Text(
+                  (r.email.isNotEmpty ? r.email + " — " : (r.division ?? "") .isNotEmpty ? r.division! + " — " : "") + r.roles.map((x) => roleLabel(x, french: fr)).join(", "),
+                  key: Key("chg-recipient-" + (r.email.isNotEmpty ? r.email : r.roles.join("+"))),
+                  style: const TextStyle(fontSize: 13),
+                ),
               ),
             if (preview.unresolved.isNotEmpty)
               Padding(
@@ -322,7 +326,9 @@ class ConfirmChangeDialog extends StatelessWidget {
                 padding: const EdgeInsets.all(8),
                 color: const Color(0xFFFEF9C3),
                 child: Text(
-                  bi(s, "MODE TEST : le courriel sera envoyé seulement à ", "TEST MODE: the e-mail will only be sent to ") + preview.deliveredTo.join(", "),
+                  preview.deliveredTo.isEmpty
+                      ? bi(s, "MODE TEST : le courriel sera envoyé seulement à l'adresse de test, pas aux destinataires ci-dessus.", "TEST MODE: the e-mail goes only to the test address, not to the recipients above.")
+                      : bi(s, "MODE TEST : le courriel sera envoyé seulement à ", "TEST MODE: the e-mail will only be sent to ") + preview.deliveredTo.join(", "),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
