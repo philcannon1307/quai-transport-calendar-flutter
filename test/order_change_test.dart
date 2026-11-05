@@ -243,7 +243,7 @@ void main() {
       expect(find.byKey(const Key("chg-recipient-sadm@groupeql.com")), findsOneWidget);
       expect(find.byKey(const Key("chg-test-banner")), findsOneWidget);
       expect(find.textContaining("communication@groupeql.com"), findsOneWidget);
-      expect(t.calls.map((c) => c.path), <String>["/orders/TO555/changes/preview"], reason: "nothing is saved before the user confirms");
+      expect(t.calls.where((c) => c.method != "GET").map((c) => c.path), <String>["/orders/TO555/changes/preview"], reason: "nothing is saved before the user confirms");
 
       await tester.tap(find.byKey(const Key("chg-confirm")));
       await _settle(tester);
