@@ -4,6 +4,7 @@ import "dart:typed_data";
 import "package:flutter/material.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
 
+import "../api/sales_order_service.dart";
 import "../api/ticket_service.dart";
 import "../i18n/i18n.dart";
 import "../logic/ticket_progress.dart";
@@ -12,6 +13,7 @@ import "../pdf/pdf_ports.dart";
 import "../state/providers.dart";
 import "../theme.dart";
 import "../widgets/order_change.dart";
+import "../widgets/provisional_ticket_view.dart";
 
 Future<void> showTicketSheet(BuildContext context, String orderNum, {Order? order}) {
   return Navigator.of(context).push<void>(
@@ -41,6 +43,7 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
   TicketPhase _phase = TicketPhase.server;
   Uint8List? _bytes;
   String? _error;
+  SalesOrderDetails? _provisional;
   bool _loading = true;
 
   @override
@@ -70,6 +73,7 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
       _loading = true;
       _error = null;
       _bytes = null;
+      _provisional = null;
       _ticks = 0;
       _progress = kStartProgress;
       _phase = TicketPhase.server;
@@ -92,7 +96,15 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
       });
     } on TicketException catch (e) {
       _timer?.cancel();
+      final provisional = e.status == 404 ? await _provisionalFor(widget.orderNum) : null;
       if (!mounted) return;
+      if (provisional != null) {
+        setState(() {
+          _provisional = provisional;
+          _loading = false;
+        });
+        return;
+      }
       setState(() {
         _error = e.message;
         _loading = false;
@@ -106,6 +118,15 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
         _loading = false;
       });
     }
+  }
+
+  /// No truck yet (the job service has no ticket): Logistique / SuperUser get the provisional list.
+  Future<SalesOrderDetails?> _provisionalFor(String soNum) async {
+    final service = ref.read(salesOrderServiceProvider);
+    if (service == null) return null;
+    final orders = await ref.read(ordersProvider.future).catchError((_) => <Order>[]);
+    final id = orders.where((o) => o.soNum == soNum && (o.soId ?? 0) > 0).map((o) => o.soId!).firstOrNull;
+    return id == null ? null : service.fetch(id);
   }
 
   Future<void> _print() async {
@@ -210,6 +231,7 @@ class _TicketSheetState extends ConsumerState<TicketSheet> {
               children: <Widget>[
                 if (_bytes != null)
                   Positioned.fill(child: ref.watch(ticketPdfBuilderProvider)(context, _bytes!, widget.orderNum)),
+                if (_provisional != null) Positioned.fill(child: ProvisionalTicketView(details: _provisional!)),
                 if (_error != null)
                   Positioned.fill(
                     child: Center(
