@@ -137,6 +137,7 @@ void main() {
 
   testWidgets("the bar shows the age and a Refresh button; hidden when there is no aggregate; disabled while refreshing", (tester) async {
     Widget host(AdminAggregate? agg, {bool refreshing = false}) => ProviderScope(
+          key: UniqueKey(), // a fresh container each time: overrides of a mounted scope are not re-applied
           overrides: <Override>[
             adminAggregateProvider.overrideWith((ref) async => agg),
             adminRefreshingProvider.overrideWith((ref) => refreshing),
