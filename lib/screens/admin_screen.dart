@@ -14,7 +14,7 @@ import "../widgets/admin_aggregate_bar.dart";
 import "../widgets/announcement_banner.dart";
 import "../widgets/bilingual.dart";
 import "../widgets/order_change.dart";
-import "ticket_sheet.dart";
+import "order_detail_screen.dart";
 
 /// /admin — SuperUser only. The credentials are checked by the SERVER; the
 /// client never holds a password or a carrier login.
@@ -354,7 +354,7 @@ class _AdminBody extends ConsumerWidget {
                           ? ""
                           : fmt.format(OrderWindows.parseDate(o.date)!),
                       style: const TextStyle(fontSize: 12, color: kPurple)),
-                  onTap: () => showTicketSheet(context, o.soNum, order: o),
+                  onTap: () => showOrderDetail(context, o),
                 ),
               ),
           ],

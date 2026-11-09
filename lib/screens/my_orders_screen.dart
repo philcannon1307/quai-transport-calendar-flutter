@@ -7,7 +7,7 @@ import "../logic/order_windows.dart";
 import "../state/providers.dart";
 import "../widgets/contact_links.dart";
 import "../widgets/order_change.dart";
-import "ticket_sheet.dart";
+import "order_detail_screen.dart";
 
 /// "Mes commandes" — upcoming only, 1 or 2 weeks.
 class MyOrdersScreen extends ConsumerWidget {
@@ -75,7 +75,7 @@ class MyOrdersScreen extends ConsumerWidget {
                                     fontWeight: FontWeight.w700))),
                         OrderChangedBadge(orderNum: o.soNum),
                       ]),
-                      onTap: () => showTicketSheet(context, o.soNum, order: o),
+                      onTap: () => showOrderDetail(context, o),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[

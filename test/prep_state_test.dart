@@ -615,7 +615,7 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets("a carrier's card still opens the picking ticket (unchanged)",
+    testWidgets("a carrier's card opens the order details + map first; the ticket opens from there",
         (tester) async {
       _size(tester, 1440);
       final stuck = TicketService(
@@ -630,8 +630,13 @@ void main() {
           extra: <Override>[ticketServiceProvider.overrideWithValue(stuck)]));
       await _settle(tester);
       await openDetail(tester, "SOA");
+      expect(find.byType(OrderDetailScreen), findsOneWidget);
+      expect(find.byType(TicketSheet), findsNothing);
+      await tester.ensureVisible(find.byKey(const Key("detail-ticket")));
+      await tester.tap(find.byKey(const Key("detail-ticket")));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
       expect(find.byType(TicketSheet), findsOneWidget);
-      expect(find.byType(OrderDetailScreen), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
   });

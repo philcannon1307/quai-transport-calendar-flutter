@@ -179,7 +179,7 @@ void main() {
     });
   });
 
-  testWidgets("tapping a card opens that order's picking ticket",
+  testWidgets("tapping a card opens the order details first; the picking ticket opens from its button",
       (tester) async {
     _tall(tester);
     final stuck = TicketService(
@@ -194,6 +194,12 @@ void main() {
         extra: <Override>[ticketServiceProvider.overrideWithValue(stuck)]));
     await _settle(tester);
     await tester.tap(find.byKey(const Key("card-SODELIV")));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const Key("order-detail")), findsOneWidget);
+    expect(find.byType(TicketSheet), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key("detail-ticket")));
+    await tester.tap(find.byKey(const Key("detail-ticket")));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(TicketSheet), findsOneWidget);
