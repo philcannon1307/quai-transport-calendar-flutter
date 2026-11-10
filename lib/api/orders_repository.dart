@@ -129,8 +129,9 @@ class OrdersRepository {
     Future<List<Order>> fromMiddleware() async {
       if (!isLogistique) return <Order>[];
       final now = _clock();
+      // null = every location: unassigned SOs sit in all of them, not only Ste-Agathe.
       final events = await middleware.events(
-        "Ste-Agathe",
+        null,
         from: now.subtract(const Duration(days: 14)),
         to: now.add(const Duration(days: 60)),
       );

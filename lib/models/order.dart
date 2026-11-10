@@ -26,6 +26,7 @@ class Order {
     this.serviceEventName,
     this.memo,
     this.carrierName,
+    this.middlewareLocation,
   });
 
   final OrderKind kind;
@@ -51,6 +52,9 @@ class Order {
   final String? serviceEventName;
   final String? memo;
   final String? carrierName;
+
+  /// Calendar location of a middleware event (Logistique only); shown on the card.
+  final String? middlewareLocation;
 
   bool get isTransfer => kind == OrderKind.transfer;
 
@@ -79,6 +83,7 @@ class Order {
         serviceEventName: serviceEventName,
         memo: memo,
         carrierName: name,
+        middlewareLocation: middlewareLocation,
       );
 
   static String? _s(dynamic v) => v == null ? null : v.toString();

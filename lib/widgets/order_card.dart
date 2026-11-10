@@ -42,6 +42,12 @@ class OrderCard extends ConsumerWidget {
 
   String? get _destination {
     if (order.isTransfer) return null;
+    final loc = order.middlewareLocation;
+    final city = order.city?.trim() ?? "";
+    // Middleware cards name their calendar location so locations can be told apart.
+    if (loc != null && loc.isNotEmpty) {
+      return city.isEmpty || city == loc ? loc : "$city · $loc";
+    }
     for (final v in <String?>[
       order.city,
       order.saleLocationName,

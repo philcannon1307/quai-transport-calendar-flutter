@@ -18,6 +18,19 @@ MiddlewareEvent _ev(String title,
         location: "Ste-Agathe");
 
 void main() {
+  test("the event location is kept on the card for Logistique", () {
+    final o = mapMiddlewareEvent(MiddlewareEvent(
+        id: "1",
+        title: "Gatineau/SO77/Cust/Livraison",
+        salesOrderId: "77",
+        startDate: "2026-11-03",
+        location: " Gatineau "))!;
+    expect(o.middlewareLocation, "Gatineau");
+    final none = mapMiddlewareEvent(const MiddlewareEvent(
+        id: "2", title: "X/SO78/C/Livraison", salesOrderId: "78", startDate: "2026-11-03"))!;
+    expect(none.middlewareLocation, isNull);
+  });
+
   group(
       "classification by the LAST title segment (ported from logistique.test.ts)",
       () {

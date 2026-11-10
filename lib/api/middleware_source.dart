@@ -2,7 +2,8 @@ import "package:dio/dio.dart";
 
 import "../logic/middleware_events.dart";
 
-/// Source of Ste-Agathe calendar events (the only place pick-ups come from).
+/// Source of the middleware calendar events (the only place pick-ups come from). A null location
+/// means EVERY location (the middleware returns them all, unassigned ones included, in one call).
 ///
 /// SECURITY: the reference app shipped the middleware's x-api-key in the web
 /// bundle. This port never holds it. The key lives on a server-side proxy that
@@ -39,7 +40,7 @@ abstract class MiddlewareSource {
   bool get configured;
 
   /// Never throws: [] on any failure, like the reference.
-  Future<List<MiddlewareEvent>> events(String location,
+  Future<List<MiddlewareEvent>> events(String? location,
       {required DateTime from, required DateTime to});
 }
 
@@ -50,7 +51,7 @@ class UnconfiguredMiddlewareSource implements MiddlewareSource {
   bool get configured => false;
 
   @override
-  Future<List<MiddlewareEvent>> events(String location,
+  Future<List<MiddlewareEvent>> events(String? location,
           {required DateTime from, required DateTime to}) async =>
       <MiddlewareEvent>[];
 }
@@ -73,14 +74,14 @@ class ProxyMiddlewareSource implements MiddlewareSource {
   static String _fmt(DateTime d) => d.toIso8601String().substring(0, 10);
 
   @override
-  Future<List<MiddlewareEvent>> events(String location,
+  Future<List<MiddlewareEvent>> events(String? location,
       {required DateTime from, required DateTime to}) async {
     try {
       final t = token();
       final res = await _dio.get<dynamic>(
         proxyUrl,
         queryParameters: <String, dynamic>{
-          "location": location,
+          if (location != null && location.isNotEmpty) "location": location,
           "from": _fmt(from),
           "to": _fmt(to),
           "_": DateTime.now().millisecondsSinceEpoch,
