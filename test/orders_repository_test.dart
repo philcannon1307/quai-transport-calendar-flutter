@@ -67,11 +67,12 @@ class _Mw implements MiddlewareSource {
   int calls = 0;
   @override
   bool get configured => true;
+  String? lastLocation = "unset";
   @override
-  Future<List<MiddlewareEvent>> events(String location,
+  Future<List<MiddlewareEvent>> events(String? location,
       {required DateTime from, required DateTime to}) async {
     calls++;
-    expect(location, "Ste-Agathe");
+    lastLocation = location;
     return list;
   }
 }
@@ -267,7 +268,7 @@ void main() {
       expect(api.transferCalls.contains("david"), isFalse);
     });
 
-    test("pulls the Ste-Agathe middleware events as the source of pick-ups",
+    test("pulls the middleware events of EVERY location as the source of pick-ups",
         () async {
       final mw = _Mw(<MiddlewareEvent>[
         _ev("1", "Chibougamau/SO20113/RGL envirotech/Ramassage"),
@@ -280,6 +281,8 @@ void main() {
           primaryToken: "david",
           linkedTokens: tokens);
       expect(mw.calls, 1);
+      expect(mw.lastLocation, isNull,
+          reason: "no location filter: unassigned SOs from every location");
       final byKind = <CalendarViewKind, int>{};
       for (final o in load.orders) {
         byKind[calendarView(o)] = (byKind[calendarView(o)] ?? 0) + 1;

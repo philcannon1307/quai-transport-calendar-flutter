@@ -55,6 +55,21 @@ test("logistique: forwards ONLY the allowed query, adds x-api-key, returns the J
   });
 });
 
+test("location is optional: absent = all locations, nothing else changes", async () => {
+  await withProxy("ok", async (app, up) => {
+    const r = await get(app, "?from=2026-11-01&to=2026-11-07", bearer(tok("logistique")));
+    assert.equal(r.status, 200);
+    assert.equal(up.calls[0].url, "/api/netsuite/events?from=2026-11-01&to=2026-11-07");
+    assert.equal(up.calls[0].key, KEY);
+    const bad = await get(app, "?location=&from=2026-11-01&to=2026-11-07", bearer(tok("logistique")));
+    assert.equal(bad.status, 400, "an explicitly empty location is still refused");
+    const unk = await get(app, "?from=2026-11-01&to=2026-11-07&evil=1", bearer(tok("logistique")));
+    assert.equal(unk.status, 400);
+    const forb = await get(app, "?from=2026-11-01&to=2026-11-07", bearer(tok("carrier", "Some - Truck")));
+    assert.ok([401, 403].includes(forb.status));
+  });
+});
+
 test("superuser is allowed; X-Quai-Session alone also works", async () => {
   await withProxy("ok", async (app) => {
     assert.equal((await get(app, Q, bearer(tok("superuser", "SuperUser")))).status, 200);

@@ -13,7 +13,7 @@ Plain Node.js, zero third-party dependencies, one file per concern (`src/`).
 |---|---|---|
 | `POST /exchange` (carrier) | `{"carrier":"InterQL","code":"…"}` | `{"accessToken","linkedTokens":{"<truck account>":"<token>"},"role":"carrier\|logistique","sessionToken","exp"}` |
 | `POST /exchange` (admin) | `{"carrier":"SuperUser","username":"…","code":"<password>"}` | same shape, `role:"superuser"`, `linkedTokens` for **every** truck account (+ `unavailable:[…]` if some could not be logged in) |
-| `GET /middleware/events?location=…&from=YYYY-MM-DD&to=YYYY-MM-DD` | header `Authorization: Bearer <sessionToken>` (role `logistique` or `superuser`) | the middleware's JSON unchanged, e.g. `{"events":[…]}` (Pick-ups tab) |
+| `GET /middleware/events?[location=…&]from=YYYY-MM-DD&to=YYYY-MM-DD` | header `Authorization: Bearer <sessionToken>` (role `logistique` or `superuser`) | the middleware's JSON unchanged, e.g. `{"events":[…]}` (Pick-ups tab) |
 | `GET /health` | – | `{"status":"ok"}` |
 
 Errors: `401 invalid_credentials` (same body for wrong code, unknown person, missing config), `429 too_many_attempts` with a `Retry-After` header, `400` bad input, `403` origin not allowed, `413` body over 4 KB, `415` not JSON, `502 upstream_unavailable` (job service down or rejecting the stored password: a configuration problem, **not** the user's fault).
@@ -27,7 +27,7 @@ Errors: `401 invalid_credentials` (same body for wrong code, unknown person, mis
 The SADM - Logistique Pick-ups tab reads Ste-Agathe calendar events from the after-sales middleware, which needs an `x-api-key`. The key lives only here (`MIDDLEWARE_API_KEY`).
 
 * **Who:** a valid, unexpired session token (Authorization bearer; `X-Quai-Session` also accepted) whose role is `logistique` or `superuser`. Carriers get 403, anything unverifiable 401.
-* **What is forwarded:** exactly one upstream call, `GET <MIDDLEWARE_URL>/api/netsuite/events`, with `location` (1-60 chars), `from` and `to` (`YYYY-MM-DD`, to >= from, at most 120 days). Any other parameter is refused with 400; no caller header, cookie or token is passed on; redirects are not followed. Other methods 405, other paths 404.
+* **What is forwarded:** exactly one upstream call, `GET <MIDDLEWARE_URL>/api/netsuite/events`, with an OPTIONAL `location` (1-60 chars; absent = every location, which is what SADM - Logistique uses so unassigned SOs of all locations show), `from` and `to` (`YYYY-MM-DD`, to >= from, at most 120 days). Any other parameter is refused with 400; no caller header, cookie or token is passed on; redirects are not followed. Other methods 405, other paths 404.
 * **Answers:** upstream JSON returned unchanged (200). Upstream error, non-JSON, over 4 MB, timeout (`MIDDLEWARE_TIMEOUT_MS`, default 15 s) or network failure -> `502 {"error":"upstream_unavailable"}` with no upstream detail. No key configured -> `503 middleware_not_configured`.
 * **Limits:** 60 requests/min per session, 120/min per IP (429 + `Retry-After`).
 * **CORS:** same exact-origin list as the login (`ALLOWED_ORIGINS`); preflight allows `GET` with `Authorization`, `X-Quai-Session`, `Cache-Control`.

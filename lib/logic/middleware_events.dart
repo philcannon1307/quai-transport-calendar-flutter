@@ -68,5 +68,7 @@ Order? mapMiddlewareEvent(MiddlewareEvent e) {
     city: firstSeg.isNotEmpty ? firstSeg : e.location,
     shippingLocationName: e.location,
     serviceEventId: int.tryParse(e.id),
+    middlewareLocation:
+        (e.location ?? "").trim().isEmpty ? null : e.location!.trim(),
   );
 }

@@ -1,7 +1,7 @@
 import { verifySession } from "./jwt.js";
 
 // Pick-ups proxy for the SADM - Logistique dispatcher view.
-//   GET /middleware/events?location=<name>&from=YYYY-MM-DD&to=YYYY-MM-DD
+//   GET /middleware/events?[location=<name>&]from=YYYY-MM-DD&to=YYYY-MM-DD
 //   Authorization: Bearer <session JWT>   (X-Quai-Session is accepted too)
 // -> GET <MIDDLEWARE_URL>/api/netsuite/events with the x-api-key from MIDDLEWARE_API_KEY.
 //
@@ -59,8 +59,11 @@ export function createMiddlewareProxy({ config, limiters, log = () => {}, now = 
     const q = url.searchParams;
     const allowedParams = new Set(["location", "from", "to", "_"]);
     for (const k of q.keys()) if (!allowedParams.has(k)) return { status: 400, body: { error: "bad_request", field: k } };
+    // location is OPTIONAL: absent = every location (the middleware then returns all of them in one
+    // call). When present it is still validated exactly as before (1-60 chars, no control chars).
+    const hasLocation = q.has("location");
     const location = (q.get("location") ?? "").trim();
-    if (!location || location.length > 60 || /[\u0000-\u001f]/.test(location)) return { status: 400, body: { error: "bad_request", field: "location" } };
+    if (hasLocation && (!location || location.length > 60 || /[\u0000-\u001f]/.test(location))) return { status: 400, body: { error: "bad_request", field: "location" } };
     const from = parseDay(q.get("from"));
     const to = parseDay(q.get("to"));
     if (from === null) return { status: 400, body: { error: "bad_request", field: "from" } };
@@ -68,7 +71,7 @@ export function createMiddlewareProxy({ config, limiters, log = () => {}, now = 
     if (to < from || (to - from) / 86400000 > MAX_RANGE_DAYS) return { status: 400, body: { error: "bad_request", field: "range" } };
 
     const target = new URL(base + UPSTREAM_PATH);
-    target.searchParams.set("location", location);
+    if (hasLocation) target.searchParams.set("location", location);
     target.searchParams.set("from", q.get("from"));
     target.searchParams.set("to", q.get("to"));
 
