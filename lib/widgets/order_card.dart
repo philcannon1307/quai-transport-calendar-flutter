@@ -8,7 +8,6 @@ import "../state/providers.dart";
 import "../logic/calendar_week.dart";
 import "../models/order.dart";
 import "../screens/order_detail_screen.dart";
-import "../screens/ticket_sheet.dart";
 import "../state/prep_providers.dart";
 import "../theme/quai_tokens.dart";
 import "../widgets/adjustment_sheet.dart";
@@ -62,7 +61,6 @@ class OrderCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.q;
     final s = StringsScope.of(context);
-    final staff = sessionCanPrepare(ref);
     final showPrep = PrepButton.visibleFor(ref, order);
     final status = statusOf(order);
     final cancelled = status == QuaiStatus.cancelled;
@@ -213,10 +211,8 @@ class OrderCard extends ConsumerWidget {
           shape: const RoundedRectangleBorder(borderRadius: QuaiRadius.cardR),
           child: InkWell(
             key: Key("card-${order.soNum}"),
-            // Logistics + SuperUser land on the order detail (call, maps, memo, prepared); carriers keep the ticket.
-            onTap: () => staff
-                ? showOrderDetail(context, order)
-                : showTicketSheet(context, order.soNum, order: order),
+            // EVERY role lands on the order details + map first; the picking list opens from the "Bon de vente" button there.
+            onTap: () => showOrderDetail(context, order),
             child: IntrinsicHeight(
               child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
