@@ -34,6 +34,9 @@ class OrdersLoad {
 /// Loads and merges every source a calendar needs. Ported from fetchOrders /
 /// fetchLinkedOrders in api.ts, minus the parts that need credentials: this
 /// class receives ready-made tokens and never signs in.
+/// The only calendar location SADM - Logistique may request (SADM = Ste-Agathe).
+const String kLogistiqueLocation = "Ste-Agathe";
+
 class OrdersRepository {
   OrdersRepository(
       {required this.api, required this.middleware, DateTime Function()? clock})
@@ -129,9 +132,9 @@ class OrdersRepository {
     Future<List<Order>> fromMiddleware() async {
       if (!isLogistique) return <Order>[];
       final now = _clock();
-      // null = every location: unassigned SOs sit in all of them, not only Ste-Agathe.
+      // SADM - Logistique sees ONLY SADM (Ste-Agathe) orders, never other locations.
       final events = await middleware.events(
-        null,
+        kLogistiqueLocation,
         from: now.subtract(const Duration(days: 14)),
         to: now.add(const Duration(days: 60)),
       );

@@ -2,8 +2,8 @@ import "package:dio/dio.dart";
 
 import "../logic/middleware_events.dart";
 
-/// Source of the middleware calendar events (the only place pick-ups come from). A null location
-/// means EVERY location (the middleware returns them all, unassigned ones included, in one call).
+/// Source of the middleware calendar events (the only place pick-ups come from). The app always
+/// passes "Ste-Agathe" (SADM); a null location (every location) is supported by the transport only.
 ///
 /// SECURITY: the reference app shipped the middleware's x-api-key in the web
 /// bundle. This port never holds it. The key lives on a server-side proxy that
