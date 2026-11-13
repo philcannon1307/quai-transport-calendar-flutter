@@ -277,7 +277,15 @@ class OrderCardMap extends ConsumerWidget {
           .join(", ");
       address = joined;
     }
-    final query = mapQueryFor(address);
+    final d2 = (order.soId ?? 0) > 0
+        ? ref.watch(salesOrderDetailsProvider(order.soId!)).valueOrNull
+        : null;
+    final query = customerMapQuery(
+            ticketAddress: contact?.address,
+            street: d2?.address,
+            city: (d2?.city ?? "").trim().isNotEmpty ? d2?.city : order.city,
+            province: order.state) ??
+        mapQueryFor(address);
     if (query == null) return const SizedBox.shrink();
     final c = context.q;
     return Padding(
