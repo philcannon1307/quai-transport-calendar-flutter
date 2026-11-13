@@ -760,6 +760,32 @@ void main() {
       expect(mapQueryFor("1234 5678"), isNull);
     });
 
+    test("customerMapQuery: full customer address, no voisin note / phone", () {
+      expect(
+          customerMapQuery(
+              ticketAddress:
+                  "Adresse voisin 178 chemin de la Seigneurie, Ste-Béatrix QC"),
+          "178 chemin de la Seigneurie, Ste-Béatrix QC, Canada");
+      expect(
+          customerMapQuery(
+              ticketAddress: "178 chemin de la Seigneurie, Ste-Béatrix",
+              city: "Ste-Béatrix",
+              province: "QC",
+              postal: "J0K 1Y0"),
+          "178 chemin de la Seigneurie, Ste-Béatrix, QC, J0K 1Y0, Canada");
+      expect(
+          customerMapQuery(
+              ticketAddress: "12 rue Principale, Gatineau 819-555-0142",
+              city: "Gatineau"),
+          "12 rue Principale, Gatineau, QC, Canada");
+      expect(
+          customerMapQuery(
+              ticketAddress: "", street: "9 chemin du Lac", city: "Mirabel"),
+          "9 chemin du Lac, Mirabel, QC, Canada");
+      expect(customerMapQuery(ticketAddress: "  ", street: null), isNull);
+      expect(customerMapQuery(ticketAddress: "Adresse voisin"), isNull);
+    });
+
     test("url: keyless fallback without a key, official Embed API with one",
         () {
       expect(mapEmbedUrl("1 rue A, Hull", key: ""),

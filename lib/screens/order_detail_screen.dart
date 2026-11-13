@@ -146,7 +146,12 @@ class OrderDetailScreen extends ConsumerWidget {
             ]),
             const SizedBox(height: 16),
             _MapCard(
-                address: address,
+                address: customerMapQuery(
+                    ticketAddress: contact?.address,
+                    street: details?.address,
+                    city: _first(details?.city, order.city),
+                    province: order.state) ??
+                    address,
                 wide: MediaQuery.sizeOf(context).width >= 700),
             const SizedBox(height: 16),
             LayoutBuilder(builder: (context, box) {
