@@ -86,7 +86,7 @@ class DockStripesPainter extends CustomPainter {
 class LangToggle extends ConsumerWidget {
   const LangToggle({super.key});
 
-  static const Color _track = Color(0xFF3A3A3A);
+  static const Color _track = Color(0xFF444444);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -105,8 +105,8 @@ class LangToggle extends ConsumerWidget {
               child: Text(label,
                   style: quaiSans(
                       active
-                          ? const Color(0xFF1A1A1A)
-                          : const Color(0xFFB5B1AB),
+                          ? const Color(0xFF222222)
+                          : const Color(0xFFB8B2AA),
                       size: 12,
                       weight: FontWeight.w700)),
             ),

@@ -293,7 +293,7 @@ String? _join(List<String?> parts) {
   return p.isEmpty ? null : p.join(", ");
 }
 
-/// 56 px orange action (dark text on orange keeps the contrast of the Ember palette).
+/// 56 px Jaune action (Black text on Jaune, 8.06:1).
 class _BigAction extends StatelessWidget {
   const _BigAction(
       {required this.buttonKey,

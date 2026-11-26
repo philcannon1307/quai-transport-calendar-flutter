@@ -90,7 +90,7 @@ class _MapFrameState extends State<_MapFrame> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                      color: const Color(0xCC1A1A1A),
+                      color: const Color(0xCC222222),
                       borderRadius: BorderRadius.circular(999)),
                   child: Text(widget.tapHint,
                       style: const TextStyle(
@@ -112,7 +112,7 @@ class _MapFrameState extends State<_MapFrame> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                    color: const Color(0xCC1A1A1A),
+                    color: const Color(0xCC222222),
                     borderRadius: BorderRadius.circular(999)),
                 child: Text(widget.lockLabel,
                     style: const TextStyle(

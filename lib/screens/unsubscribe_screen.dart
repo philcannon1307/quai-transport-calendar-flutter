@@ -85,7 +85,7 @@ class _UnsubscribeScreenState extends ConsumerState<UnsubscribeScreen> {
     };
     final Color iconColor = switch (_phase) {
       _Phase.done || _Phase.already => kPurple,
-      _Phase.invalid || _Phase.error => const Color(0xFFD64545),
+      _Phase.invalid || _Phase.error => const Color(0xFFA3123A),
       _ => kNavy,
     };
     // Reference (pages/Unsubscribe.tsx): a LIGHT page with a centred bordered card.
@@ -99,8 +99,8 @@ class _UnsubscribeScreenState extends ConsumerState<UnsubscribeScreen> {
             child: Container(
               padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
-                color: const Color(0xFFFCFCFD),
-                border: Border.all(color: const Color(0xFFE2E5EA)),
+                color: const Color(0xFFFFFFFF),
+                border: Border.all(color: const Color(0xFFDDD9D3)),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -108,7 +108,7 @@ class _UnsubscribeScreenState extends ConsumerState<UnsubscribeScreen> {
                 children: <Widget>[
                   CircleAvatar(
                     radius: 24,
-                    backgroundColor: const Color(0xFFF1F3F6),
+                    backgroundColor: const Color(0xFFF2F0ED),
                     child: Icon(waiting ? Icons.hourglass_empty : icon,
                         color: waiting ? Colors.black45 : iconColor),
                   ),

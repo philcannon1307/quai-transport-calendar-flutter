@@ -11,7 +11,7 @@ class NotFoundScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = StringsScope.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F3F6),
+      backgroundColor: const Color(0xFFF2F0ED),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,

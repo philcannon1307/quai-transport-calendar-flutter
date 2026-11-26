@@ -1,9 +1,7 @@
-// quai_tokens.dart — Design tokens for Quai Lafantaisie · Calendrier (Flutter) — 'Ember on ink' (Lafantaisie rebrand).
-// ONE tokens file: every colour / radius / space / font used by the app comes from here, so official brand
-// values can be swapped in a single place. Hex are approximations sampled from the owner's reference image
-// until official brand values arrive (charcoal #1A1A1A, light #EDEDED, orange #E8612C).
-// Status colours are deliberately NOT the brand orange: Confirmé green, Provisoire mustard + hollow dot, Annulé crimson + strikethrough.
-// onPrimary is INK, not white: white on #E8612C is only 3.4:1.
+// quai_tokens.dart — Design tokens for Quai Lafantaisie · Calendrier (Flutter) — official brand palette (Nov 2026).
+// Brand: Light Beige #F2F0ED · Beige #DDD9D3 · Light Brown #958272 · Black #222222 · Jaune #FFA500.
+// Jaune is a FILL only (text on it is Black #222222, 8.06:1; white on Jaune fails). Accent text/links use primaryInk #8A5A00.
+// Light Brown is for icons/borders/disabled, never body text (use sub #6B5A4D). Derived colours are documented in the Designer's brand-palette-remap spec.
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -74,65 +72,65 @@ class QuaiColors extends ThemeExtension<QuaiColors> {
       memoRail;
 
   static const light = QuaiColors(
-    bg: Color(0xFFEDEDED),
+    bg: Color(0xFFF2F0ED),
     surface: Color(0xFFFFFFFF),
-    field: Color(0xFFF3F2F0),
-    line: Color(0xFFDDDAD5),
-    shadow: Color(0xFFE4E2DE),
-    ink: Color(0xFF1A1A1A),
-    sub: Color(0xFF5F5C58),
-    faint: Color(0xFFA3A09B),
-    primary: Color(0xFFE8612C),
-    primaryInk: Color(0xFFB8431A),
-    primarySoft: Color(0xFFFCE9DF),
-    onPrimary: Color(0xFF1A1A1A),
-    header: Color(0xFF1A1A1A),
-    headerSub: Color(0xFFB5B1AB),
-    headerEnd: Color(0xFF2A2A2A),
-    install: Color(0xFF1A1A1A),
-    delivery: Color(0xFF2F7F93),
-    deliveryText: Color(0xFF256A7C),
-    pickup: Color(0xFF7A5B3A),
-    transfer: Color(0xFF74716E),
-    confirmed: Color(0xFF15803D),
-    confirmedBg: Color(0xFFDCFCE7),
-    tentative: Color(0xFF7A5B00),
-    tentativeBg: Color(0xFFF7EBC0),
+    field: Color(0xFFF2F0ED),
+    line: Color(0xFFDDD9D3),
+    shadow: Color(0xFFDDD9D3),
+    ink: Color(0xFF222222),
+    sub: Color(0xFF6B5A4D),
+    faint: Color(0xFF958272),
+    primary: Color(0xFFFFA500),
+    primaryInk: Color(0xFF8A5A00),
+    primarySoft: Color(0xFFFFF1D6),
+    onPrimary: Color(0xFF222222),
+    header: Color(0xFF222222),
+    headerSub: Color(0xFFB8B2AA),
+    headerEnd: Color(0xFF2E2E2E),
+    install: Color(0xFF222222),
+    delivery: Color(0xFF958272),
+    deliveryText: Color(0xFF6B5A4D),
+    pickup: Color(0xFFFFA500),
+    transfer: Color(0xFF6B5A4D),
+    confirmed: Color(0xFF1E6B3A),
+    confirmedBg: Color(0xFFDDEFE0),
+    tentative: Color(0xFF5F4A36),
+    tentativeBg: Color(0xFFEDE6DD),
     cancelled: Color(0xFFA3123A),
     cancelledBg: Color(0xFFFBE3EA),
-    memoBg: Color(0xFFFBEBDD),
-    memoRail: Color(0xFFE8612C),
+    memoBg: Color(0xFFFFF1D6),
+    memoRail: Color(0xFFFFA500),
   );
 
   static const dark = QuaiColors(
-    bg: Color(0xFF121212),
-    surface: Color(0xFF1E1E1E),
-    field: Color(0xFF262626),
-    line: Color(0xFF333333),
-    shadow: Color(0xFF0B0B0B),
-    ink: Color(0xFFF2F0EC),
-    sub: Color(0xFFA8A49E),
-    faint: Color(0xFF77746F),
-    primary: Color(0xFFF07A47),
-    primaryInk: Color(0xFFF07A47),
-    primarySoft: Color(0xFF3A2418),
-    onPrimary: Color(0xFF121212),
-    header: Color(0xFF0F0F0F),
-    headerSub: Color(0xFF96928C),
+    bg: Color(0xFF222222),
+    surface: Color(0xFF2C2C2C),
+    field: Color(0xFF343434),
+    line: Color(0xFF444444),
+    shadow: Color(0xFF1B1B1B),
+    ink: Color(0xFFF2F0ED),
+    sub: Color(0xFFB8B2AA),
+    faint: Color(0xFF8C857C),
+    primary: Color(0xFFFFA500),
+    primaryInk: Color(0xFFFFA500),
+    primarySoft: Color(0xFF3A2E15),
+    onPrimary: Color(0xFF222222),
+    header: Color(0xFF1B1B1B),
+    headerSub: Color(0xFFB8B2AA),
     headerEnd: Color(0xFF222222),
-    install: Color(0xFFE6E2DC),
-    delivery: Color(0xFF5FB3C7),
-    deliveryText: Color(0xFF5FB3C7),
-    pickup: Color(0xFFC9A27A),
-    transfer: Color(0xFF9F9C99),
-    confirmed: Color(0xFF4ADE80),
-    confirmedBg: Color(0xFF12301F),
-    tentative: Color(0xFFE9C46A),
-    tentativeBg: Color(0xFF33290D),
+    install: Color(0xFFF2F0ED),
+    delivery: Color(0xFFB3A090),
+    deliveryText: Color(0xFFB3A090),
+    pickup: Color(0xFFFFA500),
+    transfer: Color(0xFFB8B2AA),
+    confirmed: Color(0xFF6FD08C),
+    confirmedBg: Color(0xFF1F3A29),
+    tentative: Color(0xFFD9C7B0),
+    tentativeBg: Color(0xFF3A322B),
     cancelled: Color(0xFFF4829E),
-    cancelledBg: Color(0xFF3A1520),
-    memoBg: Color(0xFF3A2418),
-    memoRail: Color(0xFFF07A47),
+    cancelledBg: Color(0xFF3D1D27),
+    memoBg: Color(0xFF3A2E15),
+    memoRail: Color(0xFFFFA500),
   );
 
   @override
@@ -298,7 +296,8 @@ ThemeData quaiTheme(Brightness b) {
           borderSide: BorderSide(color: c.line)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: c.primary, width: 2)),
+          borderSide: BorderSide(
+              color: b == Brightness.light ? c.ink : c.primary, width: 2)),
     ),
     filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(

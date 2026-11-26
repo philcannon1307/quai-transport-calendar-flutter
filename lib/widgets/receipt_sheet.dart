@@ -157,14 +157,14 @@ class _ReceiptSheetState extends ConsumerState<ReceiptSheet> {
               Text(_error!,
                   key: const Key("receipt-error"),
                   style:
-                      const TextStyle(color: Color(0xFF9B1C1C), fontSize: 13)),
+                      const TextStyle(color: Color(0xFFA3123A), fontSize: 13)),
             ],
             if (_info != null) ...<Widget>[
               const SizedBox(height: 10),
               Text(_info!,
                   key: const Key("receipt-info"),
                   style:
-                      const TextStyle(color: Color(0xFF92400E), fontSize: 13)),
+                      const TextStyle(color: Color(0xFF5F4A36), fontSize: 13)),
             ],
             const SizedBox(height: 14),
             FilledButton(

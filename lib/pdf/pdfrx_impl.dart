@@ -37,7 +37,7 @@ class PdfrxTextExtractor implements PdfTextExtractor {
 /// Scrollable, zoomable multi-page view.
 Widget pdfrxTicketBuilder(BuildContext context, Uint8List bytes, String name) {
   return ColoredBox(
-    color: const Color(0xFFEDEBF3),
+    color: const Color(0xFFDDD9D3),
     child: PdfViewer.data(bytes, sourceName: "ticket-$name"),
   );
 }
