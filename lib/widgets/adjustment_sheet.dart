@@ -242,7 +242,7 @@ class _AdjustmentSheetState extends ConsumerState<AdjustmentSheet> {
               Text(_error!,
                   key: const Key("adj-error"),
                   style:
-                      const TextStyle(color: Color(0xFF9B1C1C), fontSize: 13)),
+                      const TextStyle(color: Color(0xFFA3123A), fontSize: 13)),
             ],
             const SizedBox(height: 14),
             FilledButton(

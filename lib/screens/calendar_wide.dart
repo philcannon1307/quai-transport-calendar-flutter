@@ -369,7 +369,7 @@ class _WeekGrid extends ConsumerWidget {
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: sameDay(d, m.today) ? const Color(0xFFFCF3EE) : null,
+                    color: sameDay(d, m.today) ? const Color(0xFFFFF1D6) : null,
                     border: Border(
                         top: BorderSide(color: c.line),
                         right: BorderSide(

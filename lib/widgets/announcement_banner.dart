@@ -26,7 +26,7 @@ class AnnouncementBanner extends ConsumerWidget {
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3EEFF),
+        color: const Color(0xFFFFF1D6),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: kPurple.withValues(alpha: 0.35)),
       ),
@@ -301,7 +301,7 @@ class _AnnouncementEditorState extends ConsumerState<AnnouncementEditor> {
               Text(_error!,
                   key: const Key("ann-error"),
                   style:
-                      const TextStyle(color: Color(0xFF9B1C1C), fontSize: 13)),
+                      const TextStyle(color: Color(0xFFA3123A), fontSize: 13)),
             ],
             const SizedBox(height: 14),
             Row(

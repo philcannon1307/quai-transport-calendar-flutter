@@ -161,8 +161,8 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 Container(
                   padding: const EdgeInsets.all(28),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFCFCFD),
-                    border: Border.all(color: const Color(0xFFE2E5EA)),
+                    color: const Color(0xFFFFFFFF),
+                    border: Border.all(color: const Color(0xFFDDD9D3)),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Column(
@@ -217,7 +217,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                         Text(_error!,
                             key: const Key("admin-error"),
                             style: const TextStyle(
-                                color: Color(0xFF9B1C1C), fontSize: 13)),
+                                color: Color(0xFFA3123A), fontSize: 13)),
                       ],
                       const SizedBox(height: 16),
                       FilledButton(
@@ -292,7 +292,7 @@ class _AdminBody extends ConsumerWidget {
               Text(
                   "${bi(s, "Non chargés", "Not loaded")}: ${data.failedTrucks.join(", ")}",
                   style:
-                      const TextStyle(color: Color(0xFF92400E), fontSize: 12)),
+                      const TextStyle(color: Color(0xFF5F4A36), fontSize: 12)),
             Text(s.t("dash.group"),
                 style: const TextStyle(fontWeight: FontWeight.w600)),
             Wrap(spacing: 6, children: <Widget>[

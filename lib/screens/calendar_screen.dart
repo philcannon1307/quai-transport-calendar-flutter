@@ -395,7 +395,7 @@ class _PhoneBody extends ConsumerWidget {
   }
 }
 
-/// One day of the strip: caps day name, bold number, up to 3 service dots. Selected = orange pill; today = orange dot.
+/// One day of the strip: caps day name, bold number, up to 3 service dots. Selected = Jaune pill; today = Jaune dot.
 class _StripDay extends ConsumerWidget {
   const _StripDay(
       {required this.day,
@@ -456,7 +456,7 @@ class _StripDay extends ConsumerWidget {
                           margin: const EdgeInsets.symmetric(horizontal: 1.5),
                           width: 6,
                           height: 6,
-                          // Prepared = green (on the orange selected pill: white with a green ring).
+                          // Prepared = green (on the Jaune selected pill: white with a green ring).
                           decoration: BoxDecoration(
                               color: prep.isPrepared(o)
                                   ? (selected ? c.onPrimary : c.confirmed)

@@ -5,7 +5,7 @@ import "../logic/calendar_week.dart";
 import "../theme/quai_tokens.dart";
 
 /// Status chip. Shape cue first, colour second: filled dot = confirmed, HOLLOW dot = provisional
-/// (`hollow`), filled dot + struck-through name on the card = cancelled. Never brand orange.
+/// (`hollow`), filled dot + struck-through name on the card = cancelled. Never the brand Jaune.
 class StatusChip extends StatelessWidget {
   const StatusChip({super.key, required this.status, this.label, this.hollow});
   final QuaiStatus status;
